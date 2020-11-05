@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import ktracing_data
 import ktracing_models
-import torch.nn.functional as F
+import pytorch_lightning.metrics.functional as F
 from torch.utils.data import DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
 
@@ -27,12 +27,12 @@ FINETUNED_MODEL_PATH = settings['MODEL_DIR']
 
 class CFG:
     learning_rate = 1.0e-4
-    batch_size = 64
+    batch_size = 256
     num_workers = 4
     print_freq = 100
     test_freq = 1
     start_epoch = 0
-    num_train_epochs = 10
+    num_train_epochs = 1
     warmup_steps = 30
     max_grad_norm = 1000
     gradient_accumulation_steps = 1
@@ -42,7 +42,7 @@ class CFG:
     hidden_size = 500
     nlayers = 2
     nheads = 10
-    seq_len = 100
+    seq_len = 2
 
 
 def main():
@@ -101,6 +101,7 @@ def main():
     (train_samples, train_users, train_df, mappers_dict, cate_offset, cate_cols, cont_cols) = (
         torch.load(data_path))
     print(data_path)
+    print('shape: ', train_df.shape)
     print(cate_cols, cont_cols)
 
     CFG.total_cate_size = cate_offset
@@ -162,7 +163,7 @@ def main():
     for epoch in range(CFG.start_epoch, CFG.num_train_epochs):
         # train for one epoch
 
-        train_loss, train_kappa = train(train_loader, model, optimizer, epoch, scheduler)
+        train_loss = train(train_loader, model, optimizer, epoch, scheduler)
 
         if epoch % CFG.test_freq == 0 and epoch >= 0:
             log_row = {'EPOCH': epoch, 'LR': curr_lr,
@@ -214,12 +215,17 @@ def train(train_loader, model, optimizer, epoch, scheduler):
 
         # compute loss
         k = 0.5
+        # y = y[:,-1,:]#
         pred = model(cate_x, cont_x, mask)
-        loss = F.mse_loss(pred.view(-1), y.view(-1))
-
+        try:
+            loss = torch.nn.BCELoss()(pred, y)
+        except:
+            print('curr loss: ', F.classification.auc(pred.view(-1), y.view(-1)))
         # record loss
-        losses.update(loss.item(), batch_size)
 
+        #losses.update(loss.item(), batch_size)
+        print('current loss:', loss.item())
+        losses.update(loss.item(), 1)
         if CFG.gradient_accumulation_steps > 1:
             loss = loss / CFG.gradient_accumulation_steps
 
@@ -237,7 +243,7 @@ def train(train_loader, model, optimizer, epoch, scheduler):
         end = time.time()
 
         sent_count.update(batch_size)
-    return losses.avg, accuracies.avg
+    return losses.avg
 
 
 def get_logger():
@@ -277,6 +283,8 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+        # print('update curr:', val, 'sum:', self.sum, self.count)
+        # print('average: ', self.avg)
 
 
 def asMinutes(s):

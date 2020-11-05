@@ -33,26 +33,29 @@ class KTDataset(Dataset):
         self.cont_cols = self.cfg.cont_cols
 
         self.cate_df = self.df[self.cate_cols]
-        self.cont_df = np.log1p(self.df[self.cont_cols])
-        if 'accuracy_group' in self.df:
-            self.df['num_incorrect'][self.df['num_incorrect'] == 1] = 0.5
-            self.df['num_incorrect'][self.df['num_incorrect'] > 1] = 1.0
-            self.df['num_correct'][self.df['num_correct'] > 1] = 1.0
-            self.target_df = self.df[TARGET]
-        else:
-            self.target_df = None
+        #self.cont_df = np.log1p(self.df[self.cont_cols])
+        self.cont_df = self.df[self.cont_cols]
+
+        # if 'accuracy_group' in self.df:
+        #     self.df['num_incorrect'][self.df['num_incorrect'] == 1] = 0.5
+        #     self.df['num_incorrect'][self.df['num_incorrect'] > 1] = 1.0
+        #     self.df['num_correct'][self.df['num_correct'] > 1] = 1.0
+        #     self.target_df = self.df[TARGET]
+        # else:
+        #     self.target_df = None
         self.target_df = self.df[TARGET]
-        if 'accuracy_group_game' in self.df:
-            self.df['num_incorrect_game'][self.df['num_incorrect_game'] == 1] = 0.5
-            self.df['num_incorrect_game'][self.df['num_incorrect_game'] > 1] = 1.0
-            self.df['num_correct_game'][self.df['num_correct_game'] > 1] = 1.0
-            self.target_game_df = self.df[GAME_TARGET]
-        else:
-            self.target_game_df = None
+
+        # if 'accuracy_group_game' in self.df:
+        #     self.df['num_incorrect_game'][self.df['num_incorrect_game'] == 1] = 0.5
+        #     self.df['num_incorrect_game'][self.df['num_incorrect_game'] > 1] = 1.0
+        #     self.df['num_correct_game'][self.df['num_correct_game'] > 1] = 1.0
+        #     self.target_game_df = self.df[GAME_TARGET]
+        # else:
+        #     self.target_game_df = None
 
     def __getitem__(self, idx):
-        indices = self.sample_indices[idx]
 
+        indices = self.sample_indices[idx]
         seq_len = min(self.seq_len, len(indices))
 
         if self.aug > 0:
@@ -66,25 +69,33 @@ class KTDataset(Dataset):
                     indices = indices[start_idx:]
                     seq_len = min(self.seq_len, len(indices))
 
+        len_ = min(seq_len, len(indices))
+
         tmp_cate_x = torch.LongTensor(self.cate_df.iloc[indices].values)
         cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
-        cate_x[-seq_len:] = tmp_cate_x[-seq_len:]
+        cate_x[-len_:] = tmp_cate_x[-len_:]
 
         tmp_cont_x = torch.FloatTensor(self.cont_df.iloc[indices].values)
-        tmp_cont_x[-1] = 0
+        #tmp_cont_x[-1] = 0
         cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)).zero_()
-        cont_x[-seq_len:] = tmp_cont_x[-seq_len:]
+        cont_x[-len_:] = tmp_cont_x[-len_:]
 
         mask = torch.ByteTensor(self.seq_len).zero_()
-        mask[-seq_len:] = 1
+        mask[-len_:] = 1
 
         if self.target_df is not None:
+            target_ = self.target_df.iloc[indices[-1]].values
+            if target_[0] < 0:
+                print(target_)
             target = torch.FloatTensor(self.target_df.iloc[indices[-1]].values)
+            # target = torch.FloatTensor(self.target_df.iloc[indices].values)
+            # target = torch.LongTensor(self.seq_len, 1).zero_()
+            # target[-seq_len:] = target_[-seq_len:]
             # if target.sum() == 0:
-            #     target = torch.FloatTensor(self.target_game_df.iloc[indices[-1]].values)
+            #     target = torch.FloatTensor(self.target_df.iloc[indices[-1]].values)
         else:
             target = 0
-
+        #print(cate_x.shape, cont_x.shape, target.shape)
         return cate_x, cont_x, mask, target
 
     def __len__(self):

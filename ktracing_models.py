@@ -44,7 +44,7 @@ class LSTMModel(nn.Module):
         sequence_output = h[-1]
 
         pred_y = self.reg_layer(sequence_output)
-        return pred_y
+        return torch.sigmoid(pred_y)
 
 
 encoders = {
