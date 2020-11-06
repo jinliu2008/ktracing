@@ -15,7 +15,7 @@ import ktracing_models
 import pytorch_lightning.metrics.functional as F
 from torch.utils.data import DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
-
+from sklearn import metrics
 import warnings
 
 warnings.filterwarnings(action='ignore')
@@ -26,23 +26,23 @@ FINETUNED_MODEL_PATH = settings['MODEL_DIR']
 
 
 class CFG:
-    learning_rate = 1.0e-4
+    learning_rate = 2.0e-3
     batch_size = 256
     num_workers = 4
     print_freq = 100
     test_freq = 1
     start_epoch = 0
-    num_train_epochs = 1
-    warmup_steps = 30
-    max_grad_norm = 1000
+    num_train_epochs = 10
+    warmup_steps = 1
+    max_grad_norm = 100
     gradient_accumulation_steps = 1
     weight_decay = 0.01
     dropout = 0.2
-    emb_size = 100
-    hidden_size = 500
+    emb_size = 50
+    hidden_size = 20
     nlayers = 2
     nheads = 10
-    seq_len = 2
+    seq_len = 50
 
 
 def main():
@@ -66,8 +66,8 @@ def main():
     parser.add_argument("--k", type=int, default=0)
     parser.add_argument("--lr", type=float, default=CFG.learning_rate)
     parser.add_argument("--dropout", type=float, default=CFG.dropout)
-    # parser.add_argument("--encoder", type=str, default='TRANSFORMER')
-    parser.add_argument("--encoder", type=str, default='LSTM')
+    parser.add_argument("--encoder", type=str, default='TRANSFORMER')
+    # parser.add_argument("--encoder", type=str, default='LSTM')
     args = parser.parse_args()
     print(args)
 
@@ -97,9 +97,12 @@ def main():
     torch.cuda.manual_seed(CFG.seed)
     torch.backends.cudnn.deterministic = True
 
-    data_path = "ktracing_train.pt"
+    # data_path = "ktracing_train_v0.pt"
+    data_path = "ktracing_train_v1.pt"
     (train_samples, train_users, train_df, mappers_dict, cate_offset, cate_cols, cont_cols) = (
         torch.load(data_path))
+
+    cont_cols = ['prior_question_elapsed_time', 'lagged_time', "answered_correctly_content"]
     print(data_path)
     print('shape: ', train_df.shape)
     print(cate_cols, cont_cols)
@@ -217,32 +220,42 @@ def train(train_loader, model, optimizer, epoch, scheduler):
         k = 0.5
         # y = y[:,-1,:]#
         pred = model(cate_x, cont_x, mask)
-        try:
-            loss = torch.nn.BCELoss()(pred, y)
-        except:
-            print('curr loss: ', F.classification.auc(pred.view(-1), y.view(-1)))
-        # record loss
+        loss = torch.nn.BCELoss()(pred, y)
 
-        #losses.update(loss.item(), batch_size)
-        print('current loss:', loss.item())
-        losses.update(loss.item(), 1)
+        # record loss
+        losses.update(loss.item(), batch_size)
         if CFG.gradient_accumulation_steps > 1:
             loss = loss / CFG.gradient_accumulation_steps
 
-        loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), CFG.max_grad_norm)
 
         if (step + 1) % CFG.gradient_accumulation_steps == 0:
             scheduler.step()
-            optimizer.step()
             optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
             global_step += 1
+        else:
+            loss.backward()
 
-            # measure elapsed time
+                # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
+        try:
+            classes = len(np.unique(y.detach().cpu().numpy()))
+            if classes>1:
+                auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
+                accuracies.update(auc, batch_size)
+                if (step % 200) == 0:
+                    print('curr loss: ', auc)
+        except:
+             print(auc)
+
+
 
         sent_count.update(batch_size)
+    print('overall losses:', losses.avg)
+    print('overall auc:', accuracies.avg)
     return losses.avg
 
 

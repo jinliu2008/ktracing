@@ -23,7 +23,7 @@ class KTDataset(Dataset):
     def __init__(self, cfg, df, sample_indices, aug=0.0, aug_p=0.5):
         self.cfg = cfg
         self.df = df.copy()
-        #self.df = self.df.set_index('row_id')
+        self.df = self.df.set_index('row_id')
         self.sample_indices = sample_indices
         self.seq_len = self.cfg.seq_len
         self.aug = aug
@@ -58,24 +58,28 @@ class KTDataset(Dataset):
         indices = self.sample_indices[idx]
         seq_len = min(self.seq_len, len(indices))
 
-        if self.aug > 0:
-            if len(indices) > 30:
-                if np.random.binomial(1, self.aug_p) == 1:
-                    cut_ratio = np.random.rand()
-                    if cut_ratio > self.aug:
-                        cut_ratio = self.aug
-                    # cut_ratio = self.aug
-                    start_idx = max(int(len(indices) * cut_ratio), 30)
-                    indices = indices[start_idx:]
-                    seq_len = min(self.seq_len, len(indices))
+        # if self.aug > 0:
+        #     if len(indices) > 30:
+        #         if np.random.binomial(1, self.aug_p) == 1:
+        #             cut_ratio = np.random.rand()
+        #             if cut_ratio > self.aug:
+        #                 cut_ratio = self.aug
+        #             # cut_ratio = self.aug
+        #             start_idx = max(int(len(indices) * cut_ratio), 30)
+        #             indices = indices[start_idx:]
+        #             seq_len = min(self.seq_len, len(indices))
 
         len_ = min(seq_len, len(indices))
-
-        tmp_cate_x = torch.LongTensor(self.cate_df.iloc[indices].values)
-        cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
-        cate_x[-len_:] = tmp_cate_x[-len_:]
-
-        tmp_cont_x = torch.FloatTensor(self.cont_df.iloc[indices].values)
+        try:
+            tmp_cate_x = torch.LongTensor(self.cate_df.loc[indices].values)
+            cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
+            cate_x[-len_:] = tmp_cate_x[-len_:]
+        except:
+            print(self.cate_df.loc[indices].values)
+        try:
+            tmp_cont_x = torch.FloatTensor(self.cont_df.fillna(0).loc[indices].values.tolist())
+        except:
+            print(self.cont_df.loc[indices].values)
         #tmp_cont_x[-1] = 0
         cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)).zero_()
         cont_x[-len_:] = tmp_cont_x[-len_:]
@@ -84,10 +88,10 @@ class KTDataset(Dataset):
         mask[-len_:] = 1
 
         if self.target_df is not None:
-            target_ = self.target_df.iloc[indices[-1]].values
+            target_ = self.target_df.loc[indices[-1]].values
             if target_[0] < 0:
                 print(target_)
-            target = torch.FloatTensor(self.target_df.iloc[indices[-1]].values)
+            target = torch.FloatTensor(self.target_df.loc[indices[-1]].values)
             # target = torch.FloatTensor(self.target_df.iloc[indices].values)
             # target = torch.LongTensor(self.seq_len, 1).zero_()
             # target[-seq_len:] = target_[-seq_len:]
