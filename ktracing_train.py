@@ -17,29 +17,38 @@ from torch.utils.data import DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
 from sklearn import metrics
 import warnings
+from ktracing_utils import *
+import sys
 
 warnings.filterwarnings(action='ignore')
 
 settings = json.load(open('SETTINGS.json'))
+parameters = read_yml('parameters.yaml')
+
 DB_PATH = settings['CLEAN_DATA_DIR']
 FINETUNED_MODEL_PATH = settings['MODEL_DIR']
+time_str = time.strftime("%m%d-%H%M")
 
+# get_logger(settings, time_str)
+
+logging.basicConfig(filename=os.path.join(settings['LOGS_DIR'], f'log_{time_str}.txt'),
+                    level=logging.INFO, format="%(message)s")
 
 class CFG:
-    learning_rate = 2.0e-3
-    batch_size = 256
+    learning_rate = 3.0e-3
+    batch_size = 128
     num_workers = 4
     print_freq = 100
     test_freq = 1
     start_epoch = 0
-    num_train_epochs = 10
+    num_train_epochs = 5
     warmup_steps = 1
     max_grad_norm = 100
     gradient_accumulation_steps = 1
     weight_decay = 0.01
     dropout = 0.2
     emb_size = 50
-    hidden_size = 20
+    hidden_size = 10
     nlayers = 2
     nheads = 10
     seq_len = 50
@@ -69,7 +78,8 @@ def main():
     parser.add_argument("--encoder", type=str, default='TRANSFORMER')
     # parser.add_argument("--encoder", type=str, default='LSTM')
     args = parser.parse_args()
-    print(args)
+
+
 
     CFG.batch_size = args.batch_size
     CFG.gradient_accumulation_steps = args.grad_accums
@@ -88,7 +98,6 @@ def main():
     CFG.target_size = 1
     CFG.encoder = args.encoder
     CFG.aug = args.aug
-    print(CFG.__dict__)
 
     os.environ['PYTHONHASHSEED'] = str(CFG.seed)
     random.seed(CFG.seed)
@@ -97,13 +106,10 @@ def main():
     torch.cuda.manual_seed(CFG.seed)
     torch.backends.cudnn.deterministic = True
 
-    # data_path = "ktracing_train_v0.pt"
-    data_path = "ktracing_train_v1.pt"
-    (train_samples, train_users, train_df, mappers_dict, cate_offset, cate_cols, cont_cols) = (
-        torch.load(data_path))
+    (train_df, train_samples, cate_offset) = torch.load(os.path.join(settings['CLEAN_DATA_DIR'], settings['TRAIN_PT']))
+    cont_cols = parameters['cont_cols']
+    cate_cols = parameters['cate_cols']
 
-    cont_cols = ['prior_question_elapsed_time', 'lagged_time', "answered_correctly_content"]
-    print(data_path)
     print('shape: ', train_df.shape)
     print(cate_cols, cont_cols)
 
@@ -118,7 +124,9 @@ def main():
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    print('parameters: ', count_parameters(model))
+    logging.info(f'CFG: {CFG.__dict__}')
+    logging.info(f'arg: {args}')
+    logging.info(f'parameters: {count_parameters(model)}')
 
     train_db = ktracing_data.KTDataset(CFG, train_df, train_samples, aug=CFG.aug)
 
@@ -140,23 +148,26 @@ def main():
 
     num_train_optimization_steps = int(
         len(train_db) / CFG.batch_size / CFG.gradient_accumulation_steps) * 7
-    print('num_train_optimization_steps', num_train_optimization_steps)
+    logging.info(f'num_train_optimization_steps: {num_train_optimization_steps}')
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=CFG.warmup_steps,
                                                 num_training_steps=num_train_optimization_steps
                                                 )
 
-    print('use WarmupLinearSchedule ...')
+    logging.info('use WarmupLinearSchedule ...')
 
     def get_lr():
         return scheduler.get_lr()[0]
 
     log_df = pd.DataFrame(columns=(['EPOCH'] + ['LR'] + ['TRAIN_LOSS', 'auc']))
 
-    os.makedirs('log', exist_ok=True)
+    # os.makedirs('log', exist_ok=True)
+    # get_logger(settings)
 
+    CFG.input_filename = settings['TRAIN_PT']
+    file_name = generate_file_name(CFG)
     curr_lr = get_lr()
-
-    print(f'initial learning rate:{curr_lr}')
+    logging.info(f'using training data: {file_name}')
+    logging.info(f'initial learning rate:{curr_lr}')
 
     best_model = None
     best_epoch = 0
@@ -166,23 +177,22 @@ def main():
     for epoch in range(CFG.start_epoch, CFG.num_train_epochs):
         # train for one epoch
 
-        train_loss = train(train_loader, model, optimizer, epoch, scheduler)
+        train_loss, auc = train(train_loader, model, optimizer, epoch, scheduler)
 
         if epoch % CFG.test_freq == 0 and epoch >= 0:
-            log_row = {'EPOCH': epoch, 'LR': curr_lr,
-                       'TRAIN_LOSS': train_loss
-                       }
+            log_row = {'EPOCH': epoch, 'LR': curr_lr, 'TRAIN_LOSS': train_loss, 'auc': auc}
             log_df = log_df.append(pd.DataFrame(log_row, index=[0]), sort=False)
-            print(log_df.tail(20))
+            logging.info(log_df.tail(20))
 
             batch_size = CFG.batch_size * CFG.gradient_accumulation_steps
 
     model_to_save = model.module if hasattr(model, 'module') else model  # Only save the cust_model it-self
 
-    input_filename = args.data.split('/')[-1]
-    curr_model_name = (f'b-{batch_size}_a-{CFG.encoder}_e-{CFG.emb_size}_h-{CFG.hidden_size}_'
-                       f'd-{CFG.dropout}_l-{CFG.nlayers}_hd-{CFG.nheads}_'
-                       f's-{CFG.seed}_len-{CFG.seq_len}_aug-{CFG.aug}_da-{input_filename}_k-{args.k}.pt')
+    curr_model_name = f"{file_name}_{args.k}.pt"
+    # curr_model_name = (f'b-{batch_size}_a-{CFG.encoder}_e-{CFG.emb_size}_h-{CFG.hidden_size}_'
+    #                    f'd-{CFG.dropout}_l-{CFG.nlayers}_hd-{CFG.nheads}_'
+    #                    f's-{CFG.seed}_len-{CFG.seq_len}_aug-{CFG.aug}_da-{input_filename}_k-{args.k}.pt')
+
     save_checkpoint({
         'epoch': best_epoch + 1,
         'arch': 'transformer',
@@ -199,14 +209,12 @@ def train(train_loader, model, optimizer, epoch, scheduler):
     data_time = AverageMeter()
     losses = AverageMeter()
     accuracies = AverageMeter()
-
     sent_count = AverageMeter()
-    # meter = bowl_utils.Meter()
 
     # switch to train mode
     model.train()
-
-    start = end = time.time()
+    start = time.time()
+    end = time.time()
     global_step = 0
 
     for step, (cate_x, cont_x, mask, y) in enumerate(train_loader):
@@ -217,8 +225,6 @@ def train(train_loader, model, optimizer, epoch, scheduler):
         batch_size = cate_x.size(0)
 
         # compute loss
-        k = 0.5
-        # y = y[:,-1,:]#
         pred = model(cate_x, cont_x, mask)
         loss = torch.nn.BCELoss()(pred, y)
 
@@ -238,36 +244,40 @@ def train(train_loader, model, optimizer, epoch, scheduler):
         else:
             loss.backward()
 
-                # measure elapsed time
+        # measure elapsed time
         batch_time.update(time.time() - end)
-        end = time.time()
-        try:
-            classes = len(np.unique(y.detach().cpu().numpy()))
-            if classes>1:
-                auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
-                accuracies.update(auc, batch_size)
-                if (step % 200) == 0:
-                    print('curr loss: ', auc)
-        except:
-             print(auc)
-
-
-
         sent_count.update(batch_size)
+        end = time.time()
+
+        try:
+            auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
+            accuracies.update(auc, batch_size)
+        except:
+            logging.error('exception occured. current averaged auc:', accuracies.avg)
+
+        if (step % 200) == 0:
+            logging.info(f'curr loss: {auc}')
+            logging.info('Epoch: [{0}][{1}/{2}] '
+                  'Data {data_time.val:.3f} ({data_time.avg:.3f}) '
+                  'Elapsed {remain:s} '
+                  'Loss: {loss.val:.4f}({loss.avg:.4f}) '
+                  'Acc: {acc.val:.4f}({acc.avg:.4f}) '
+                  'Grad: {grad_norm:.4f}  '
+                  'LR: {lr:.6f}  '
+                  'sent/s {sent_s:.0f} '
+                .format(
+                epoch, step, len(train_loader), batch_time=batch_time,
+                data_time=data_time, loss=losses,
+                acc=accuracies,
+                remain=timeSince(start, float(step + 1) / len(train_loader)),
+                grad_norm=grad_norm,
+                lr=scheduler.get_lr()[0],
+                sent_s=sent_count.avg / batch_time.avg
+            ))
+
     print('overall losses:', losses.avg)
     print('overall auc:', accuracies.avg)
-    return losses.avg
-
-
-def get_logger():
-    FORMAT = '[%(levelname)s]%(asctime)s:%(name)s:%(message)s'
-    logging.basicConfig(format=FORMAT, level=logging.INFO)
-    logger = logging.getLogger('main')
-    logger.setLevel(logging.DEBUG)
-    return logger
-
-
-logger = get_logger()
+    return losses.avg, accuracies.avg
 
 
 def save_checkpoint(state, model_path, model_filename, is_best=False):

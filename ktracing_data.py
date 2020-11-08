@@ -28,6 +28,10 @@ class KTDataset(Dataset):
         self.seq_len = self.cfg.seq_len
         self.aug = aug
         self.aug_p = aug_p
+        self.df_users = {}
+        df_users = (self.df[self.df.content_type_id==False]).groupby('user_id').groups
+        for user_idx, start_indices in enumerate(df_users.values()):
+            self.df_users[user_idx] = start_indices
 
         self.cate_cols = self.cfg.cate_cols
         self.cont_cols = self.cfg.cont_cols
@@ -55,8 +59,11 @@ class KTDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        indices = self.sample_indices[idx]
-        seq_len = min(self.seq_len, len(indices))
+        user_id, index = self.sample_indices[idx]
+
+        len_ = min(self.seq_len, index+1)
+        indices = self.df_users[user_id][index+1-len_:index+1]
+
 
         # if self.aug > 0:
         #     if len(indices) > 30:
@@ -69,7 +76,7 @@ class KTDataset(Dataset):
         #             indices = indices[start_idx:]
         #             seq_len = min(self.seq_len, len(indices))
 
-        len_ = min(seq_len, len(indices))
+        # len_ = min(seq_len, len(indices))
         try:
             tmp_cate_x = torch.LongTensor(self.cate_df.loc[indices].values)
             cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
