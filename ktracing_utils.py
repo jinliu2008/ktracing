@@ -5,6 +5,8 @@ import pandas as pd
 import gcsfs
 import feather
 
+import os
+import json
 from tqdm import tqdm as tqdm_notebook
 import torch
 
@@ -54,6 +56,8 @@ class CFG:
     nlayers = 2
     nheads = 10
     seq_len = 20
+    target_size = 1
+    res_dir = 'res_dir_0'
 
 
 def get_logger(settings):
@@ -202,3 +206,11 @@ def get_sample_indices(df_, seq_len=50):
         for num, curr_index in enumerate(start_indices):
             sample_indices.append((user_idx, num))
     return sample_indices
+
+
+def convert_feather(settings):
+    path =settings['RAW_DATA_DIR']
+    files = [f for f in os.listdir(path) if f.endswith('.feather')]
+    for f in files:
+        pd_ = feather.read_dataframe(os.path.join(path, f))
+        pd_.to_pickle(os.path.join(path, f.replace('.feather','.pkl')))

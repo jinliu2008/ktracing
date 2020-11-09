@@ -5,8 +5,8 @@
     "LOGS_DIR": "./logs",
     "SUBMISSION_DIR": "./submissions/",
     "TOKEN_DIR": "../ktracing_gcs.json",
-    "TRAIN_DATASET": "train_sample_v0.feather",
-    "TRAIN_PT": "train_sample_v0.pt",
+    "TRAIN_DATASET": "train_sample_v1.feather",
+    "TRAIN_PT": "train_sample_v1.pt",
     "VALIDATION_DATASET": "validation_sample_v0.feather",
-    "TEST_DATASET": "test_v0.feather"
+    "TEST_DATASET": "test_v0.pkl"
 }

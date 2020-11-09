@@ -1,24 +1,24 @@
-import os
+# import os
 import math
-import copy
-import torch
-import json
-import time
+# import copy
+# import torch
+# import json
+# import time
 import random
-import logging
+# import logging
 import argparse
-import collections
+# import collections
 import numpy as np
-import pandas as pd
+# import pandas as pd
 import ktracing_data
 import ktracing_models
-import pytorch_lightning.metrics.functional as F
+# import pytorch_lightning.metrics.functional as F
 from torch.utils.data import DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
 from sklearn import metrics
 import warnings
 from ktracing_utils import *
-import sys
+# import sys
 
 warnings.filterwarnings(action='ignore')
 
@@ -28,6 +28,8 @@ parameters = read_yml('parameters.yaml')
 DB_PATH = settings['CLEAN_DATA_DIR']
 FINETUNED_MODEL_PATH = settings['MODEL_DIR']
 time_str = time.strftime("%m%d-%H%M")
+
+convert_feather(settings)
 
 # get_logger(settings, time_str)
 
@@ -188,21 +190,21 @@ def main():
 
             batch_size = CFG.batch_size * CFG.gradient_accumulation_steps
 
-    model_to_save = model.module if hasattr(model, 'module') else model  # Only save the cust_model it-self
+        model_to_save = model.module if hasattr(model, 'module') else model  # Only save the cust_model it-self
 
-    curr_model_name = f"{file_name}_{args.k}.pt"
-    # curr_model_name = (f'b-{batch_size}_a-{CFG.encoder}_e-{CFG.emb_size}_h-{CFG.hidden_size}_'
-    #                    f'd-{CFG.dropout}_l-{CFG.nlayers}_hd-{CFG.nheads}_'
-    #                    f's-{CFG.seed}_len-{CFG.seq_len}_aug-{CFG.aug}_da-{input_filename}_k-{args.k}.pt')
+        curr_model_name = f"{file_name}_{args.k}.pt"
+        # curr_model_name = (f'b-{batch_size}_a-{CFG.encoder}_e-{CFG.emb_size}_h-{CFG.hidden_size}_'
+        #                    f'd-{CFG.dropout}_l-{CFG.nlayers}_hd-{CFG.nheads}_'
+        #                    f's-{CFG.seed}_len-{CFG.seq_len}_aug-{CFG.aug}_da-{input_filename}_k-{args.k}.pt')
 
-    save_checkpoint({
-        'epoch': best_epoch + 1,
-        'arch': 'transformer',
-        'state_dict': model_to_save.state_dict(),
-        'log': log_df,
-    },
-        FINETUNED_MODEL_PATH, curr_model_name,
-    )
+        save_checkpoint({
+            'epoch': best_epoch + 1,
+            'arch': 'transformer',
+            'state_dict': model_to_save.state_dict(),
+            'log': log_df,
+        },
+            FINETUNED_MODEL_PATH, curr_model_name,
+        )
     print('done')
 
 
