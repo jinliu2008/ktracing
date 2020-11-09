@@ -1,4 +1,4 @@
-cate_cols: ['content_id']
+cate_cols: ['content_id', 'part']
 cont_cols: ['prior_question_elapsed_time','lagged_time',"answered_correctly_content"]
 seq_len: 100
 CFG:

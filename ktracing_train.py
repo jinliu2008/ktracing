@@ -106,6 +106,8 @@ def main():
     torch.cuda.manual_seed(CFG.seed)
     torch.backends.cudnn.deterministic = True
 
+    preprocess(settings=settings, parameters=parameters, mode='train', update_flag=True)
+
     (train_df, train_samples, cate_offset) = torch.load(os.path.join(settings['CLEAN_DATA_DIR'], settings['TRAIN_PT']))
     cont_cols = parameters['cont_cols']
     cate_cols = parameters['cate_cols']

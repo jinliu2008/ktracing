@@ -93,6 +93,10 @@ def generate_files(settings={}, parameters={}):
     mappers_dict_path = os.path.join(settings["CLEAN_DATA_DIR"], 'mappers_dict.pkl')
     if not os.path.isfile(mappers_dict_path):
         df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], 'train_v0.feather'))
+        questions_df = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'questions.csv'), usecols=[0, 3],
+                                   dtype={'question_id': 'int16', 'part': 'int8'})
+        questions_df.rename(columns={'question_id': 'content_id'}, inplace=True)
+        df_ = pd.merge(df_, questions_df, on='content_id', how='left')
         mappers_dict = {}
         cate_offset = 1
         for col in (cate_cols):
@@ -137,13 +141,17 @@ def preprocess(settings={}, parameters={}, mode='train', update_flag=False, outp
         return
 
     df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
+    df_.sort_values(['user_id', 'timestamp'], inplace=True)
+
+    questions_df = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'questions.csv'), usecols=[0, 3],
+                                dtype={'question_id': 'int16', 'part': 'int8'})
+    questions_df.rename(columns={'question_id': 'content_id'}, inplace=True)
+    df_ = pd.merge(df_, questions_df, on='content_id', how='left')
 
     mappers_dict, results_c = generate_files(settings=settings, parameters=parameters)
     cate_cols = parameters['cate_cols']
     cont_cols = parameters['cont_cols']
     seq_len = parameters['seq_len']
-
-    df_.sort_values(['user_id', 'timestamp'], inplace=True)
     sample_indices = get_sample_indices(df_, seq_len=seq_len)
     cate_offset = 1
     for col in cate_cols:
