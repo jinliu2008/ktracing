@@ -58,6 +58,8 @@ class CFG:
     seq_len = 20
     target_size = 1
     res_dir = 'res_dir_0'
+    seed = 123
+    data_seed = 123
 
 
 def get_logger(settings):
