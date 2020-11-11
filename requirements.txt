@@ -5,3 +5,4 @@ gcsfs
 torch
 estimators
 PyYAML
+pyarrow==1.0.1
