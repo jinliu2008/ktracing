@@ -5,5 +5,5 @@ gcsfs
 torch
 estimators
 transformers
-PyYAML==5.3.1g
+PyYAML==5.3.1
 pyarrow==1.0.1
