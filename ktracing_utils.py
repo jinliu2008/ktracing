@@ -41,7 +41,7 @@ dtypes = {
 class CFG:
     learning_rate = 3.0e-3
     batch_size = 1024
-    num_workers = 4
+    num_workers = 8
     print_freq = 100
     test_freq = 1
     start_epoch = 0
@@ -167,7 +167,13 @@ def preprocess(questions_df=None, mappers_dict=None, results_c=None,
 
     df_.loc[:, 'lagged_time'] = df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 1e3
     df_.loc[:, 'prior_question_elapsed_time'] = df_.loc[:, 'prior_question_elapsed_time'] / 1e6
-
+    
+    
+    df_.loc[:, 'lagged_y'] = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=2)
+    
+    
+    df_.loc[:,'rolling_avg_lagged_y'] = df_[['user_id', 'lagged_y']].groupby('user_id')['lagged_y'].cumsum()/(1+df_.groupby('user_id')['user_id'].cumcount())
+    
     for col in cont_cols:
         df_[col].fillna(0, inplace=True)
 
@@ -285,9 +291,9 @@ def train(train_loader, model, optimizer, epoch, scheduler):
                 lr=scheduler.get_lr()[0],
                 sent_s=sent_count.avg / batch_time.avg
             ))
-
-    print('overall losses:', losses.avg)
-    print('overall auc:', accuracies.avg)
+    print('training batch_time:', batch_time.sum)
+    print('training overall losses:', losses.avg)
+    print('training overall auc:', accuracies.avg)
     return losses.avg, accuracies.avg
 
 
@@ -307,7 +313,6 @@ def validate(valid_loader, model):
         # measure data loading time
         data_time.update(time.time() - end)
 
-
         cate_x, cont_x, mask, y = cate_x.cuda(), cont_x.cuda(), mask.cuda(), y.cuda()
         batch_size = cate_x.size(0)
 
@@ -315,19 +320,17 @@ def validate(valid_loader, model):
         with torch.no_grad():
 
             pred = model(cate_x, cont_x, mask)
-
-            auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
-            losses.update(auc, batch_size)
-            if step%20==0:
-                print('running time:', data_time.avg)
-                print('auc: ', auc, 'avg: ', losses.avg)
-
+            try:
+              auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
+              losses.update(auc, batch_size)
+            except:
+              pass
         predictions.append(pred.detach().cpu())
         ground_truth.append(y.cpu())
 
     predictions = torch.cat(predictions).numpy()
     ground_truths = torch.cat(ground_truth).numpy()
-
+    print('validation total eval time:', data_time.sum)
     return losses.avg, predictions, ground_truths
 
 
@@ -345,20 +348,20 @@ def run_validation(settings=None, parameters=None, CFG=None, model_name=""):
     CFG.cate_cols = parameters['cate_cols']
     CFG.cont_cols = parameters['cont_cols']
 
+
     model_path = os.path.join(settings['MODEL_DIR'], model_name)
     model = ktracing_models.encoders[CFG.encoder](CFG)
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint['state_dict'])
-    print("=> loaded checkpoint '{}' (epoch {})".format(model_path, checkpoint['epoch']))
+    # print("=> loaded checkpoint '{}' (epoch {})".format(model_path, checkpoint['epoch']))
     model.cuda()
-    print('cfg:', CFG.__dict__)
     valid_db = ktracing_data.KTDataset(CFG, valid_df, valid_samples)
     valid_loader = DataLoader(
         valid_db, batch_size=CFG.batch_size, shuffle=False,
-        num_workers=0, pin_memory=True)
+        num_workers=CFG.num_workers, pin_memory=True)
     auc_score, prediction, groundtruth = validate(valid_loader, model)
     auc = metrics.roc_auc_score(groundtruth, prediction)
-    print('current loss: ', auc)
+    print('Validation AUC loss: ', auc)
 
 
 def save_checkpoint(state, model_path, model_filename, is_best=False):
