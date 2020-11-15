@@ -21,9 +21,9 @@ def main():
     torch.manual_seed(CFG.seed)
     torch.cuda.manual_seed(CFG.seed)
     torch.backends.cudnn.deterministic = True
-    path = 'b-1024_a-TRANSFORMER_e-20_h-20_d-0.2_l-2_hd-10_s-123_len-20_aug-0.0_da-trainsamplev1_epoch-0.pt'
+    path = 'b-128_a-TRANSFORMER_e-20_h-20_d-0.2_l-2_hd-10_s-123_len-20_aug-0.0_da-trainsamplev1_epoch-0.pt'
     # settings['VALIDATION_DATASET']
-    CFG.batch_size = 1024*64
+    CFG.batch_size = 1024
     settings['VALIDATION_DATASET'] = 'train_sample_v1.feather'
     run_validation(settings=settings, parameters=parameters, CFG=CFG, model_name=path)
 

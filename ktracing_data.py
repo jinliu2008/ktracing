@@ -1,93 +1,73 @@
 # import warnings
 # warnings.filterwarnings('ignore')
 
-import sys
-import os
-import math
-import numpy as np
-import pandas as pd
 
 import torch
 from torch.utils.data import Dataset
-import torch.nn.functional as F
-import random
+import numpy as np
 
-# TARGET = ['accuracy_group', 'num_correct', 'num_incorrect']
-# GAME_TARGET = ['accuracy_group_game', 'num_correct_game', 'num_incorrect_game']
 TARGET = ['answered_correctly']
-
-# TARGET = ['accuracy_group']
 
 
 class KTDataset(Dataset):
     def __init__(self, cfg, df, sample_indices, aug=0.0, aug_p=0.5):
         self.cfg = cfg
         self.df = df.copy()
-        self.df = self.df.set_index('row_id')
+        # if "row_id" in self.df:
+        #     self.df = self.df.set_index('row_id')
         self.sample_indices = sample_indices
         self.seq_len = self.cfg.seq_len
         self.aug = aug
         self.aug_p = aug_p
-        self.df_users = {}
-        df_users = (self.df[self.df.content_type_id==False]).groupby('user_id').groups
-        for user_idx, start_indices in enumerate(df_users.values()):
-            self.df_users[user_idx] = start_indices
-
         self.cate_cols = self.cfg.cate_cols
         self.cont_cols = self.cfg.cont_cols
-
-        self.cate_df = self.df[self.cate_cols]
+        self.df_users, self.cate_df, self.cont_df, self.target_df = {}, {}, {}, {}
+        df_users = self.df.groupby('user_id').groups
+        # self.df_users_len = df_users.copy()
+        # self.df_users_np = df_users.copy()
+        for user_idx, start_indices in df_users.items():
+            curr_user = self.df.loc[start_indices]
+            self.cate_df[user_idx] = curr_user[self.cate_cols].values
+            self.cont_df[user_idx] = curr_user[self.cont_cols].values
+            self.target_df[user_idx] = curr_user[TARGET].values
+        # self.cate_df = self.df[self.cate_cols].values
+        # self.cont_df = self.df[self.cont_cols].values
+        # self.target_df = self.df[TARGET].values
         #self.cont_df = np.log1p(self.df[self.cont_cols])
-        self.cont_df = self.df[self.cont_cols]
 
-        # if 'accuracy_group' in self.df:
-        #     self.df['num_incorrect'][self.df['num_incorrect'] == 1] = 0.5
-        #     self.df['num_incorrect'][self.df['num_incorrect'] > 1] = 1.0
-        #     self.df['num_correct'][self.df['num_correct'] > 1] = 1.0
-        #     self.target_df = self.df[TARGET]
-        # else:
-        #     self.target_df = None
-        self.target_df = self.df[TARGET]
-
-        # if 'accuracy_group_game' in self.df:
-        #     self.df['num_incorrect_game'][self.df['num_incorrect_game'] == 1] = 0.5
-        #     self.df['num_incorrect_game'][self.df['num_incorrect_game'] > 1] = 1.0
-        #     self.df['num_correct_game'][self.df['num_correct_game'] > 1] = 1.0
-        #     self.target_game_df = self.df[GAME_TARGET]
-        # else:
-        #     self.target_game_df = None
 
     def __getitem__(self, idx):
 
         user_id, index = self.sample_indices[idx]
+        # curr_len = len(self.df_user_np[user_id])
+        # if curr_len == 0:
+        #     if index == 0:
+        #         default_value = 2
+        #     # default value
+        #         self.df_user_np[user_id].append(default_value)
+        # else:
+        #     if curr_len>=10:
+        #         self.df_user_np[user_id].popleft()
+        #     new_value = (self.df_user_np[user_id][-1]*(curr_len-1)+self.df.loc[index-1, TARGET].values)/curr_len
+        #     self.df_user_np[user_id].append(new_value)
 
         len_ = min(self.seq_len, index+1)
-        indices = self.df_users[user_id][index+1-len_:index+1]
-
-
-        # if self.aug > 0:
-        #     if len(indices) > 30:
-        #         if np.random.binomial(1, self.aug_p) == 1:
-        #             cut_ratio = np.random.rand()
-        #             if cut_ratio > self.aug:
-        #                 cut_ratio = self.aug
-        #             # cut_ratio = self.aug
-        #             start_idx = max(int(len(indices) * cut_ratio), 30)
-        #             indices = indices[start_idx:]
-        #             seq_len = min(self.seq_len, len(indices))
+        # indices = self.df_users[user_id][index+1-len_:index+1]
+        if self.aug > 0:
+            if len_ > 50:
+                if np.random.binomial(1, self.aug_p) == 1:
+                    cut_ratio = np.random.rand()
+                    if cut_ratio > self.aug:
+                        cut_ratio = self.aug
+                    len_ = max(int(len_ * cut_ratio), 30)
 
         # len_ = min(seq_len, len(indices))
-        try:
-            tmp_cate_x = torch.LongTensor(self.cate_df.loc[indices].values)
-            cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
-            cate_x[-len_:] = tmp_cate_x[-len_:]
-        except:
-            print(self.cate_df.loc[indices].values)
-        try:
-            tmp_cont_x = torch.FloatTensor(self.cont_df.fillna(0).loc[indices].values.tolist())
-        except:
-            print(self.cont_df.loc[indices].values)
-        #tmp_cont_x[-1] = 0
+
+        tmp_cate_x = torch.LongTensor(self.cate_df[user_id][index+1-len_:index+1, :])
+        cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
+        cate_x[-len_:] = tmp_cate_x[-len_:]
+
+        tmp_cont_x = torch.FloatTensor(self.cont_df[user_id][index+1-len_:index+1, :])
         cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)).zero_()
         cont_x[-len_:] = tmp_cont_x[-len_:]
 
@@ -95,10 +75,7 @@ class KTDataset(Dataset):
         mask[-len_:] = 1
 
         if self.target_df is not None:
-            target_ = self.target_df.loc[indices[-1]].values
-            if target_[0] < 0:
-                print(target_)
-            target = torch.FloatTensor(self.target_df.loc[indices[-1]].values)
+            target = torch.FloatTensor(self.target_df[user_id][index])
             # target = torch.FloatTensor(self.target_df.iloc[indices].values)
             # target = torch.LongTensor(self.seq_len, 1).zero_()
             # target[-seq_len:] = target_[-seq_len:]
@@ -111,21 +88,3 @@ class KTDataset(Dataset):
 
     def __len__(self):
         return len(self.sample_indices)
-
-
-DB_PATH = '../../input/data-science-bowl-2019'
-
-
-def main():
-    (train_df, test_df, mappers_dict, cate_offset, cate_cols,
-     cont_cols, extra_cont_cls, train_samples, train_groups, test_samples) = (
-        torch.load(os.path.join(DB_PATH, 'bowl_v28.pt')))
-
-    train_db = BowlDataset(train_df, train_samples, mappers_dict)
-
-    for cate_x, cont_x, mask, target in train_db:
-        a = 0
-
-
-if __name__ == '__main__':
-    main()

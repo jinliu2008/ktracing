@@ -1,5 +1,5 @@
 cate_cols: ['content_id', 'part']
-cont_cols: ['prior_question_elapsed_time','lagged_time',"answered_correctly_content"]
+cont_cols: ['prior_question_elapsed_time','lagged_time',"answered_correctly_content", 'sum_y', 'rolling_avg_lagged_y']
 seq_len: 100
 CFG:
   learning_rate: 1.0e-3

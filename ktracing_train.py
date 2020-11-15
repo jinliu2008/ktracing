@@ -49,7 +49,7 @@ def main():
     train_db = ktracing_data.KTDataset(CFG, train_df, train_samples, aug=CFG.aug)
 
     train_loader = DataLoader(
-        train_db, batch_size=CFG.batch_size, shuffle=True,
+        train_db, batch_size=CFG.batch_size, shuffle=False,
         num_workers=0, pin_memory=True)
     # Prepare optimizer
     param_optimizer = list(model.named_parameters())
@@ -100,6 +100,8 @@ def main():
         },
             settings['MODEL_DIR'], model_file_name,
         )
+
+        run_validation(settings=settings, parameters=parameters, CFG=CFG, model_name=model_file_name)
     print('done')
 
 
