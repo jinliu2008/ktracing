@@ -53,11 +53,11 @@ class CFG:
     gradient_accumulation_steps = 1
     weight_decay = 0.01
     dropout = 0.2
-    emb_size = 20
-    hidden_size = 4
-    nlayers = 2
-    nheads = 4
-    seq_len = 20
+    emb_size = 50
+    hidden_size = 10
+    nlayers = 1
+    nheads = 10
+    seq_len = 50
     target_size = 1
     res_dir = 'res_dir_0'
     seed = 123
@@ -162,7 +162,7 @@ def update_record(results_u, uid, record):
 def feature_engineering(df_):
     df_.loc[:, 'lagged_time'] = df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 1e3
     df_.loc[:, 'prior_question_elapsed_time'] = df_.loc[:, 'prior_question_elapsed_time'] / 1e6
-    lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=0)
+    lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=2)
     df_.loc[:, 'sum_y'] = df_.groupby('user_id')['user_id'].cumcount()
     df_.loc[:, 'rolling_avg_lagged_y'] = lagged_y.cumsum() / (1+df_.loc[:, 'sum_y'])
     return df_
@@ -170,7 +170,7 @@ def feature_engineering(df_):
 
 def add_features(df_, settings, parameters, mode='train'):
     questions_df, mappers_dict, results_c = generate_files(settings=settings, parameters=parameters)
-    df_.sort_values(['timestamp'], ascending=True, inplace=True)
+    df_.sort_values(['user_id','timestamp'], ascending=True, inplace=True)
     if mode == 'validation':
         results_u = get_user_dict(settings, user_list=df_.user_id.unique().tolist())
         selected_users = {user: results_u[user] for user in results_u if user in df_.user_id}
@@ -356,8 +356,11 @@ def train(train_loader, model, optimizer, epoch, scheduler):
         batch_time.update(time.time() - end)
         sent_count.update(batch_size)
         end = time.time()
-        auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
-        accuracies.update(auc, batch_size)
+        try:
+            auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
+            accuracies.update(auc, batch_size)
+        except Exception as e:  # work on python 3.x
+            print('Failed: ' + str(e))
         if (step % 200) == 0:
             logging.info(f'curr loss: {auc}')
             logging.info('Epoch: [{0}][{1}/{2}] '
@@ -404,13 +407,12 @@ def validate(valid_loader, model):
 
         # compute loss
         with torch.no_grad():
-
             pred = model(cate_x, cont_x, mask)
             try:
-              auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
-              losses.update(auc, batch_size)
-            except:
-              pass
+                auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
+                losses.update(auc, batch_size)
+            except Exception as e:
+                print('Failed: ' + str(e))
         predictions.append(pred.detach().cpu())
         ground_truth.append(y.cpu())
 

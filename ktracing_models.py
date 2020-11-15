@@ -12,32 +12,23 @@ import math
 from torch.autograd import Variable
 
 
-class PositionalEncoder(nn.Module):
-    def __init__(self, d_model, max_seq_len=100):
-        super().__init__()
-        self.d_model = d_model
+class PositionalEncoding(nn.Module):
 
-        # create constant 'pe' matrix with values dependant on
-        # pos and i
-        pe = torch.zeros(max_seq_len, d_model)
-        for pos in range(max_seq_len):
-            for i in range(0, d_model, 2):
-                pe[pos, i] = \
-                    math.sin(pos / (10000 ** ((2 * i) / d_model)))
-                pe[pos, i + 1] = \
-                    math.cos(pos / (10000 ** ((2 * (i + 1)) / d_model)))
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
 
-        pe = pe.unsqueeze(0)
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        # make embeddings relatively larger
-        x = x * math.sqrt(self.d_model)
-        # add constant to embedding
-        seq_len = x.size(1)
-        x = x + Variable(self.pe[:, :seq_len], \
-                         requires_grad=False).cuda()
-        return x
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
 
 
 class TransfomerModel(nn.Module):
@@ -46,10 +37,11 @@ class TransfomerModel(nn.Module):
         self.cfg = cfg
         cate_col_size = len(cfg.cate_cols)
         cont_col_size = len(cfg.cont_cols)
+
         self.cate_emb = nn.Embedding(cfg.total_cate_size, cfg.emb_size, padding_idx=0)
-        # self.position_emb = PositionalEncoder(cfg.emb_size)
+
         # self.position_emb = PositionalEncoder(2)
-        self.position_emb = nn.Embedding(cfg.emb_size, cfg.hidden_size)
+        # self.position_emb_nn = nn.Embedding(cfg.emb_size, cfg.hidden_size)
         self.cate_proj = nn.Sequential(
             nn.Linear(cfg.emb_size * cate_col_size, cfg.hidden_size // 2),
             nn.LayerNorm(cfg.hidden_size // 2),
@@ -59,6 +51,7 @@ class TransfomerModel(nn.Module):
             nn.LayerNorm(cfg.hidden_size // 2),
         )
 
+        self.pos_encoder = PositionalEncoding(cfg.hidden_size, 0.2)
         self.config = BertConfig(
             # 3,  # not used
             hidden_size=cfg.hidden_size,
@@ -91,12 +84,14 @@ class TransfomerModel(nn.Module):
         cate_emb = self.cate_emb(cate_x).view(batch_size, self.cfg.seq_len, -1)
         cate_emb = self.cate_proj(cate_emb)
         cont_emb = self.cont_emb(cont_x)
-
         seq_emb = torch.cat([cate_emb, cont_emb], 2)
-        seq_length = self.cfg.seq_len
-        position_ids = torch.arange(seq_length, dtype=torch.long, device=cate_x.device)
-        position_ids = position_ids.unsqueeze(0).expand((batch_size, seq_length))
-        position_emb = self.position_emb(position_ids)
+
+        position_emb = self.pos_encoder(seq_emb)
+        # seq_length = self.cfg.seq_len
+        # position_ids = torch.arange(seq_length, dtype=torch.long, device=cate_x.device)
+        # position_ids = position_ids.unsqueeze(0).expand((batch_size, seq_length))
+        # position_emb_ = self.position_emb(seq_emb)
+        # position_emb = self.position_emb_nn(position_emb_)
         seq_emb = (seq_emb + position_emb)
         # seq_emb = self.ln(seq_emb)
 
