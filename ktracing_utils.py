@@ -16,8 +16,8 @@ import logging
 import math
 import numpy as np
 import time
-import ktracing_data
-import ktracing_models
+from ktracing_data import *
+from ktracing_models import *
 from torch.utils.data import DataLoader
 
 
@@ -62,7 +62,7 @@ class CFG:
     res_dir = 'res_dir_0'
     seed = 123
     data_seed = 123
-    encoder = 'TRANSFORMER'
+    encoder = 'LSTM'
     aug = 0.0
     window_size = 50
 
@@ -162,7 +162,7 @@ def update_record(results_u, uid, record):
 def feature_engineering(df_):
     df_.loc[:, 'lagged_time'] = df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 1e3
     df_.loc[:, 'prior_question_elapsed_time'] = df_.loc[:, 'prior_question_elapsed_time'] / 1e6
-    lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=2)
+    lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=0)
     df_.loc[:, 'sum_y'] = df_.groupby('user_id')['user_id'].cumcount()
     df_.loc[:, 'rolling_avg_lagged_y'] = lagged_y.cumsum() / (1+df_.loc[:, 'sum_y'])
     return df_
@@ -449,7 +449,7 @@ def parse_model_name(CFG, model_name):
 def load_model(settings, CFG, model_name):
 
     model_path = os.path.join(settings['MODEL_DIR'], model_name)
-    model = ktracing_models.encoders[CFG.encoder](CFG)
+    model = encoders[CFG.encoder](CFG)
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint['state_dict'])
     print("=> loaded checkpoint '{}' (epoch {})".format(model_path, checkpoint['epoch']))
@@ -467,7 +467,7 @@ def run_validation(settings=None, parameters=None, CFG=None, model_name="", df_=
     CFG.cate_cols = parameters['cate_cols']
     CFG.cont_cols = parameters['cont_cols']
 
-    valid_db = ktracing_data.KTDataset(CFG, valid_df, valid_samples)
+    valid_db = KTDataset(CFG, valid_df, valid_samples)
     valid_loader = DataLoader(
         valid_db, batch_size=CFG.batch_size, shuffle=False,
         num_workers=CFG.num_workers, pin_memory=True)

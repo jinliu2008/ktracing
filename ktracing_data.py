@@ -5,14 +5,14 @@
 import torch
 from torch.utils.data import Dataset
 import numpy as np
-
+import gc
 TARGET = ['answered_correctly']
 
 
 class KTDataset(Dataset):
     def __init__(self, cfg, df, sample_indices, aug=0.0, aug_p=0.5):
         self.cfg = cfg
-        self.df = df.copy()
+        # self.df = df.copy()
         # if "row_id" in self.df:
         #     self.df = self.df.set_index('row_id')
         self.sample_indices = sample_indices
@@ -22,15 +22,18 @@ class KTDataset(Dataset):
         self.cate_cols = self.cfg.cate_cols
         self.cont_cols = self.cfg.cont_cols
         self.df_users, self.cate_df, self.cont_df, self.target_df = {}, {}, {}, {}
-        df_users = self.df.groupby('user_id').groups
+        df_users = df.groupby('user_id').groups
         # self.df_users_len = df_users.copy()
         # self.df_users_np = df_users.copy()
         for user_idx, start_indices in df_users.items():
-            curr_user = self.df.loc[start_indices]
+            curr_user = df.loc[start_indices]
             self.cate_df[user_idx] = curr_user[self.cate_cols].values
-            self.cont_df[user_idx] = curr_user[self.cont_cols].values
+            self.cont_df[user_idx] = np.log1p(curr_user[self.cont_cols].values.clip(min=0))
             self.target_df[user_idx] = curr_user[TARGET].values
-        # self.cate_df = self.df[self.cate_cols].values
+
+        del df
+        gc.collect()
+        # self.cate_df = df[self.cate_cols].values
         # self.cont_df = self.df[self.cont_cols].values
         # self.target_df = self.df[TARGET].values
         #self.cont_df = np.log1p(self.df[self.cont_cols])

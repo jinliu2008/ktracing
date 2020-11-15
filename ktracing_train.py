@@ -35,7 +35,7 @@ def main():
     CFG.cont_cols = parameters['cont_cols']
     CFG.total_cate_size = cate_offset
 
-    model = ktracing_models.encoders[CFG.encoder](CFG)
+    model = encoders[CFG.encoder](CFG)
     model.cuda()
     model._dropout = CFG.dropout
 
@@ -46,7 +46,7 @@ def main():
     logging.info(f'CFG: {CFG.__dict__}')
     logging.info(f'parameters: {count_parameters(model)}')
 
-    train_db = ktracing_data.KTDataset(CFG, train_df, train_samples, aug=CFG.aug)
+    train_db = KTDataset(CFG, train_df, train_samples, aug=CFG.aug)
 
     train_loader = DataLoader(
         train_db, batch_size=CFG.batch_size, shuffle=False,
