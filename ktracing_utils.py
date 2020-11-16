@@ -62,7 +62,7 @@ class CFG:
     res_dir = 'res_dir_0'
     seed = 123
     data_seed = 123
-    encoder = 'LSTM'
+    encoder = 'TRANSFORMER'
     aug = 0.0
     window_size = 50
 

@@ -11,6 +11,8 @@ from transformers.modeling_gpt2 import GPT2Model, GPT2Config, GPT2PreTrainedMode
 import math
 from torch.autograd import Variable
 
+from torch.autograd import Variable
+
 
 class PositionalEncoding(nn.Module):
 
@@ -39,19 +41,21 @@ class TransfomerModel(nn.Module):
         cont_col_size = len(cfg.cont_cols)
 
         self.cate_emb = nn.Embedding(cfg.total_cate_size, cfg.emb_size, padding_idx=0)
+        self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)
 
-        # self.position_emb = PositionalEncoder(2)
         # self.position_emb_nn = nn.Embedding(cfg.emb_size, cfg.hidden_size)
         self.cate_proj = nn.Sequential(
             nn.Linear(cfg.emb_size * cate_col_size, cfg.hidden_size // 2),
             nn.LayerNorm(cfg.hidden_size // 2),
         )
+
         self.cont_emb = nn.Sequential(
             nn.Linear(cont_col_size, cfg.hidden_size // 2),
             nn.LayerNorm(cfg.hidden_size // 2),
         )
 
-        self.pos_encoder = PositionalEncoding(cfg.hidden_size, 0.2)
+        self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)
+
         self.config = BertConfig(
             # 3,  # not used
             hidden_size=cfg.hidden_size,
@@ -81,19 +85,19 @@ class TransfomerModel(nn.Module):
     def forward(self, cate_x, cont_x, mask):
         batch_size = cate_x.size(0)
 
+        # cate_x = self.cate_pos_encoder(cate_x)
         cate_emb = self.cate_emb(cate_x).view(batch_size, self.cfg.seq_len, -1)
         cate_emb = self.cate_proj(cate_emb)
+
+        # cont_x = self.cont_pos_encoder(cont_x)
         cont_emb = self.cont_emb(cont_x)
         seq_emb = torch.cat([cate_emb, cont_emb], 2)
 
-        position_emb = self.pos_encoder(seq_emb)
-        # seq_length = self.cfg.seq_len
-        # position_ids = torch.arange(seq_length, dtype=torch.long, device=cate_x.device)
-        # position_ids = position_ids.unsqueeze(0).expand((batch_size, seq_length))
-        # position_emb_ = self.position_emb(seq_emb)
-        # position_emb = self.position_emb_nn(position_emb_)
+        seq_length = self.cfg.seq_len
+        position_ids = torch.arange(seq_length, dtype=torch.long, device=cate_x.device)
+        position_ids = position_ids.unsqueeze(0).expand((batch_size, seq_length))
+        position_emb = self.position_embeddings(position_ids)
         seq_emb = (seq_emb + position_emb)
-        # seq_emb = self.ln(seq_emb)
 
         extended_attention_mask = mask.unsqueeze(1).unsqueeze(2)
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
