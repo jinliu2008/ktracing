@@ -31,7 +31,7 @@ class KTDataset(Dataset):
             self.cont_df[user_idx] = np.log1p(curr_user[self.cont_cols].values.clip(min=0))
             self.target_df[user_idx] = curr_user[TARGET].values
 
-        del df
+        del df, df_users
         gc.collect()
         # self.cate_df = df[self.cate_cols].values
         # self.cont_df = self.df[self.cont_cols].values
@@ -79,11 +79,6 @@ class KTDataset(Dataset):
 
         if self.target_df is not None:
             target = torch.FloatTensor(self.target_df[user_id][index])
-            # target = torch.FloatTensor(self.target_df.iloc[indices].values)
-            # target = torch.LongTensor(self.seq_len, 1).zero_()
-            # target[-seq_len:] = target_[-seq_len:]
-            # if target.sum() == 0:
-            #     target = torch.FloatTensor(self.target_df.iloc[indices[-1]].values)
         else:
             target = 0
         #print(cate_x.shape, cont_x.shape, target.shape)

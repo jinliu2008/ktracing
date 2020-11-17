@@ -41,7 +41,7 @@ dtypes = {
 
 
 class CFG:
-    learning_rate = 3.0e-3
+    learning_rate = 1.0e-3
     batch_size = 128
     num_workers = 8
     print_freq = 100
@@ -54,7 +54,7 @@ class CFG:
     weight_decay = 0.01
     dropout = 0.2
     emb_size = 50
-    hidden_size = 10
+    hidden_size = 20
     nlayers = 1
     nheads = 10
     seq_len = 50
@@ -161,7 +161,7 @@ def update_record(results_u, uid, record):
 
 def feature_engineering(df_):
     df_.loc[:, 'lagged_time'] = df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 1e3
-    df_.loc[:, 'prior_question_elapsed_time'] = df_.loc[:, 'prior_question_elapsed_time'] / 1e6
+    df_.loc[:, 'prior_question_elapsed_time'] = df_.loc[:, 'prior_question_elapsed_time'] / 1e3
     lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=0)
     df_.loc[:, 'sum_y'] = df_.groupby('user_id')['user_id'].cumcount()
     df_.loc[:, 'rolling_avg_lagged_y'] = lagged_y.cumsum() / (1+df_.loc[:, 'sum_y'])
@@ -184,12 +184,10 @@ def add_features(df_, settings, parameters, mode='train'):
                   axis=1)
     df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
-    # df_ = df_.join(questions_df, how='left')
-    # df_ = df_.join(results_c, how='left')
-    # df_.reset_index(inplace=True)
 
     df_ = feature_engineering(df_)
     return df_, mappers_dict, sample_indices
+
 
 def add_features_validate(df_, settings, parameters):
     questions_df, mappers_dict, results_c, results_u = generate_files(settings=settings, parameters=parameters)
@@ -286,15 +284,14 @@ def save_to_feather(file_name="validation-v0-00000000000", output_file_name="val
 
 
 # generate train sample indices
-def get_sample_indices(df, results_u=None):
-    df_ = df.copy()
+def get_sample_indices(df_, results_u=None):
     # df_.set_index('row_id', inplace=True)
     # df_.set_index('row_id', inplace=True)
     row_id_list = df_[df_.content_type_id==False].index
     sample_indices = []
     df_users = df_.groupby('user_id').groups
     for user_idx, start_indices in df_users.items():
-        if results_u and user_idx in results_u:
+        if isinstance(results_u, dict) and user_idx in results_u:
             start_idx = len(results_u[user_idx])
         else:
             start_idx = 0
@@ -529,3 +526,6 @@ def adjust_learning_rate(optimizer, epoch, CFG):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     return lr
+
+
+
