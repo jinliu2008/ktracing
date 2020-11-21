@@ -7,6 +7,7 @@ import json
 
 warnings.filterwarnings(action='ignore')
 
+submission_flag = 0
 
 def main():
 
@@ -28,14 +29,19 @@ def main():
     torch.cuda.manual_seed(CFG.seed)
     torch.backends.cudnn.deterministic = True
     CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
-    results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
+
+    if submission_flag == 1:
+        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
+    else:
+        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict_v0.pkl')
     start = time.time()
-
-
     if not os.path.isfile(results_u_path):
-
-        file_name = "train_v0.feather"
-        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
+        if submission_flag == 1:
+            input_file_name = "train.feather"
+        else:
+            input_file_name = "train_v0.feather"
+        print(f'input: {input_file_name}')
+        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
         df_ = df_.groupby('user_id').tail(CFG.window_size)
         df_, _, _ = preprocess_data(df_, parameters=parameters, settings=settings)
 
@@ -46,16 +52,13 @@ def main():
     else:
         with open(results_u_path, 'rb') as handle:
             user_dict = pickle.load(handle)
-    print(f'process time: {time.time() - start} seconds')
 
+    print(f'process time: {time.time() - start} seconds')
     print(f'CFG: {CFG.__dict__}')
     logging.info(f'CFG: {CFG.__dict__}')
     file_name = settings['TRAIN_DATASET']
     df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-
     train_loader, _, sample_size = get_dataloader(df_, settings, parameters, CFG, user_dict={})
-
-
     model = encoders[CFG.encoder](CFG)
     model.cuda()
     model._dropout = CFG.dropout
@@ -120,6 +123,7 @@ def main():
         #
         df_sample[TARGET] = 0.5
         sample_batch = []
+
         # batch 1
         sample_batch.append(df_sample.iloc[:18])
         # batch 2
@@ -141,10 +145,8 @@ def main():
                 df_batch_prior['answered_correctly'] = answers
                 answers_all += answers.copy()
                 predictions_all += [p[0] for p in predictions.tolist()]
-                # print('comparison', pd.DataFrame({'ACT': answers, 'PRED': predictions.tolist()}))
 
             # save prior batch for state update
-
             test_loader, test_df, _ = get_dataloader(test_batch, settings, parameters, CFG,
                                                      user_dict=user_dict, prior_df=df_batch_prior)
             df_batch_prior = test_df[['user_id'] + CFG.features]
