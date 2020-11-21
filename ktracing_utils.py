@@ -5,6 +5,7 @@ import pandas as pd
 import gcsfs
 import feather
 from sklearn import metrics
+import sqlite3
 
 from tqdm import tqdm as tqdm_notebook
 
@@ -12,6 +13,7 @@ from collections import deque
 import torch
 
 import pickle
+import _pickle as cpickle
 import logging
 import math
 import numpy as np
@@ -132,9 +134,27 @@ def generate_files(settings=None, parameters=None):
     with open(results_c_path, 'rb') as handle:
         results_c = pickle.load(handle)
 
-    # results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'results_u.pkl')
-
     return questions_df, mappers_dict, results_c
+
+
+
+def build_conn(df_users_content, chunk_size=20000):
+    conn = sqlite3.connect(':memory:')
+    # cursor = conn.cursor()
+
+    total = len(df_users_content)
+    n_chunks = (total // chunk_size + 1)
+
+    i = 0
+    while i < n_chunks:
+        df_users_content.iloc[i * chunk_size:(i + 1) * chunk_size].to_sql('results_u', conn, method='multi',
+                                                                          if_exists='append', index=False)
+        i += 1
+
+    conn.execute('CREATE UNIQUE INDEX users_index ON results_u user_id')
+    del df_users_content
+    gc.collect()
+    return conn
 
 
 def get_user_dict(settings, user_list=[]):
@@ -168,12 +188,29 @@ def feature_engineering(df_):
     return df_
 
 
+def  add_new_features(df_, settings, parameters):
+    questions_df, mappers_dict, results_c = generate_files(settings=settings, parameters=parameters)
+
+    sample_indices = get_samples(df_)
+
+    # df_ = df_.set_index('content_id')
+    df_ = pd.concat([df_.reset_index(drop=True), questions_df.reindex(df_['content_id'].values).reset_index(drop=True)],
+                  axis=1)
+    df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
+                  axis=1)
+    # df_ = feature_engineering(df_).
+
+    return df_, mappers_dict, sample_indices
+
+
 def add_features(df_, settings, parameters, mode='train'):
     questions_df, mappers_dict, results_c = generate_files(settings=settings, parameters=parameters)
-    df_.sort_values(['user_id','timestamp'], ascending=True, inplace=True)
+    df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    df_.reset_index(inplace=True)
+
     if mode == 'validation':
         results_u = get_user_dict(settings, user_list=df_.user_id.unique().tolist())
-        selected_users = {user: results_u[user] for user in results_u if user in df_.user_id}
+        selected_users = {user: results_u[user] for user in df_.user_id if user in results_u}
         df_ = pd.concat(list(selected_users.values())+[df_], axis=0)
         sample_indices = get_sample_indices(df_, results_u)
     else:
@@ -224,6 +261,20 @@ def add_features_validate(df_, settings, parameters):
 
     sample_indices = get_sample_indices(df_, results_u)
     return df_, mappers_dict, sample_indices
+
+
+def preprocess_data(df_, settings=None, parameters=None):
+
+    CFG.cate_cols = parameters['cate_cols']
+    CFG.cont_cols = parameters['cont_cols']
+
+    df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    df_.reset_index(inplace=True)
+
+    df_, mappers_dict, sample_indices = add_new_features(df_, settings, parameters)
+    df_, cate_offset = transform_df(df_, parameters, mappers_dict)
+
+    return df_, sample_indices, cate_offset
 
 
 def preprocess(settings=None, parameters=None, mode='train', update_flag=False, output_file=""):
@@ -283,6 +334,25 @@ def save_to_feather(file_name="validation-v0-00000000000", output_file_name="val
     dataset.reset_index(drop=True).to_feather(output_file_path)
 
 
+# generate sample indices
+def get_samples(df_):
+    row_id_list = df_[df_.content_type_id==False].index
+
+    sample_indices = []
+    df_users = df_.groupby('user_id').groups
+    for user_idx, start_indices in df_users.items():
+        curr_cnt = 0
+        for num, curr_index in enumerate(start_indices):
+            if curr_index in row_id_list:
+                sample_indices.append((user_idx, curr_cnt, curr_index))
+                curr_cnt += 1
+            else:
+                assert df_.loc[curr_index, TARGET] == -1
+
+    # df_lens = df_[df_.content_type_id==False].groupby('user_id').size().to_dict()
+    return sample_indices
+
+
 # generate train sample indices
 def get_sample_indices(df_, results_u=None):
     # df_.set_index('row_id', inplace=True)
@@ -331,7 +401,7 @@ def train(train_loader, model, optimizer, epoch, scheduler):
 
         # compute loss
         pred = model(cate_x, cont_x, mask)
-        loss = torch.nn.BCELoss()(pred, y)
+        loss = torch.nn.BCELoss()(pred, y.reshape(-1,1))
 
         # record loss
         losses.update(loss.item(), batch_size)
@@ -380,6 +450,7 @@ def train(train_loader, model, optimizer, epoch, scheduler):
     print('training batch_time:', batch_time.sum)
     print('training overall losses:', losses.avg)
     print('training overall auc:', accuracies.avg)
+
     return losses.avg, accuracies.avg
 
 
@@ -453,27 +524,51 @@ def load_model(settings, CFG, model_name):
     model.cuda()
     return model
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def run_validation(settings=None, parameters=None, CFG=None, model_name="", df_=None):
+def get_lr():
+    return scheduler.get_lr()[0]
+
+def get_dataloader(df_, settings, parameters, CFG, user_dict={}, prior_df=None):
+    train_df, train_samples, cate_offset = \
+        preprocess_data(df_, settings=settings, parameters=parameters)
+    CFG.total_cate_size = cate_offset
+    train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
+                         user_dict, CFG.features, aug=CFG.aug, prior_df=prior_df)
+    train_loader = DataLoader(
+        train_db, batch_size=CFG.batch_size, shuffle=False,
+        num_workers=0, pin_memory=True)
+    return train_loader, train_df, len(train_samples)
+
+def update_params(CFG, parameters):
+    for key, value in parameters.items():
+        setattr(CFG, key, value)
+    return CFG
+
+def run_validation(df_, settings=None, parameters=None, CFG=None, model_name="", user_dict={}):
 
     CFG = parse_model_name(CFG, model_name)
-    (valid_df, valid_samples, cate_offset) = \
-        preprocess(settings=settings, parameters=parameters, mode='validation', update_flag=True)
 
-    CFG.total_cate_size = cate_offset
-    CFG.cate_cols = parameters['cate_cols']
-    CFG.cont_cols = parameters['cont_cols']
-
-    valid_db = KTDataset(CFG, valid_df, valid_samples)
-    valid_loader = DataLoader(
-        valid_db, batch_size=CFG.batch_size, shuffle=False,
-        num_workers=CFG.num_workers, pin_memory=True)
+    valid_loader, _, _ = get_dataloader(df_, settings, parameters, CFG, user_dict=user_dict)
 
     model = load_model(settings, CFG, model_name)
 
     auc_score, prediction, groundtruth = validate(valid_loader, model)
     auc = metrics.roc_auc_score(groundtruth, prediction)
     print('Validation AUC loss: ', auc)
+
+
+def run_test(valid_loader, settings=None, CFG=None, model_name=""):
+
+    CFG = parse_model_name(CFG, model_name)
+
+    model = load_model(settings, CFG, model_name)
+
+    prediction = test(valid_loader, model)
+    return prediction
+
+
 
 
 def save_checkpoint(state, model_path, model_filename, is_best=False):

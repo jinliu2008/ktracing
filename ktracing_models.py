@@ -38,7 +38,7 @@ class TransfomerModel(nn.Module):
         super(TransfomerModel, self).__init__()
         self.cfg = cfg
         cate_col_size = len(cfg.cate_cols)
-        cont_col_size = len(cfg.cont_cols)
+        cont_col_size = len(cfg.cont_cols)+1
 
         self.cate_emb = nn.Embedding(cfg.total_cate_size, cfg.emb_size, padding_idx=0)
         self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)

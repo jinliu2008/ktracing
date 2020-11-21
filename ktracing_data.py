@@ -1,61 +1,84 @@
 # import warnings
 # warnings.filterwarnings('ignore')
 
-
+from collections import defaultdict
 import torch
 from torch.utils.data import Dataset
 import numpy as np
+import pandas as pd
 import gc
-TARGET = ['answered_correctly']
+TARGET = 'answered_correctly'
+
+# funcs for user stats with loop
+def add_user_feats(df, answered_correctly_sum_u_dict, count_u_dict):
+    acsu = np.zeros(len(df), dtype=np.int32)
+    cu = np.zeros(len(df), dtype=np.int32)
+    for cnt,row in enumerate(tqdm(df[['user_id','answered_correctly']].values)):
+        acsu[cnt] = answered_correctly_sum_u_dict[row[0]]
+        cu[cnt] = count_u_dict[row[0]]
+        answered_correctly_sum_u_dict[row[0]] += row[1]
+        count_u_dict[row[0]] += 1
+    user_feats_df = pd.DataFrame({'answered_correctly_sum_u':acsu, 'count_u':cu})
+    user_feats_df['answered_correctly_avg_u'] = user_feats_df['answered_correctly_sum_u'] / user_feats_df['count_u']
+    df = pd.concat([df, user_feats_df], axis=1)
+    return df
+
+def add_user_feats_without_update(df, answered_correctly_sum_u_dict, count_u_dict):
+    acsu = np.zeros(len(df), dtype=np.int32)
+    cu = np.zeros(len(df), dtype=np.int32)
+    for cnt,row in enumerate(df[['user_id']].values):
+        acsu[cnt] = answered_correctly_sum_u_dict[row[0]]
+        cu[cnt] = count_u_dict[row[0]]
+    user_feats_df = pd.DataFrame({'answered_correctly_sum_u':acsu, 'count_u':cu})
+    user_feats_df['answered_correctly_avg_u'] = user_feats_df['answered_correctly_sum_u'] / user_feats_df['count_u']
+    df = pd.concat([df, user_feats_df], axis=1)
+    return df
+
+def update_user_feats(df, answered_correctly_sum_u_dict, count_u_dict):
+    for row in df[['user_id','answered_correctly','content_type_id']].values:
+        if row[2] == 0:
+            answered_correctly_sum_u_dict[row[0]] += row[1]
+            count_u_dict[row[0]] += 1
 
 
 class KTDataset(Dataset):
-    def __init__(self, cfg, df, sample_indices, aug=0.0, aug_p=0.5):
+    def __init__(self, cfg, df, sample_indices, user_dict, columns, aug=0.0, aug_p=0.5, prior_df=None):
         self.cfg = cfg
-        # self.df = df.copy()
-        # if "row_id" in self.df:
-        #     self.df = self.df.set_index('row_id')
+        self.df = df
+
         self.sample_indices = sample_indices
         self.seq_len = self.cfg.seq_len
         self.aug = aug
         self.aug_p = aug_p
         self.cate_cols = self.cfg.cate_cols
         self.cont_cols = self.cfg.cont_cols
-        self.df_users, self.cate_df, self.cont_df, self.target_df = {}, {}, {}, {}
-        df_users = df.groupby('user_id').groups
-        # self.df_users_len = df_users.copy()
-        # self.df_users_np = df_users.copy()
-        for user_idx, start_indices in df_users.items():
-            curr_user = df.loc[start_indices]
-            self.cate_df[user_idx] = curr_user[self.cate_cols].values
-            self.cont_df[user_idx] = np.log1p(curr_user[self.cont_cols].values.clip(min=0))
-            self.target_df[user_idx] = curr_user[TARGET].values
 
-        del df, df_users
-        gc.collect()
-        # self.cate_df = df[self.cate_cols].values
-        # self.cont_df = self.df[self.cont_cols].values
-        # self.target_df = self.df[TARGET].values
-        #self.cont_df = np.log1p(self.df[self.cont_cols])
+        self.user_dict = user_dict
+        self.start_token = 2
+        self.columns = columns
+        self.prior_df = prior_df
+        self.submission = False
+        if isinstance(prior_df, pd.DataFrame):
+            self.submission = True
+            # update dict
+            for user_id, u in prior_df.groupby('user_id'):
+                curr_row = u[self.columns]
+                if user_id not in self.user_dict:
+                    curr_array = curr_row.copy()
+                else:
+                    user_hist = self.user_dict[user_id]
+                    curr_array = np.concatenate((user_hist, curr_row), axis=0)
 
+                # update dict
+                if curr_array.shape[0] > self.seq_len:
+                    self.user_dict[user_id] = curr_array[-self.seq_len:, :]
+                else:
+                    self.user_dict[user_id] = curr_array.copy()
 
     def __getitem__(self, idx):
 
-        user_id, index = self.sample_indices[idx]
-        # curr_len = len(self.df_user_np[user_id])
-        # if curr_len == 0:
-        #     if index == 0:
-        #         default_value = 2
-        #     # default value
-        #         self.df_user_np[user_id].append(default_value)
-        # else:
-        #     if curr_len>=10:
-        #         self.df_user_np[user_id].popleft()
-        #     new_value = (self.df_user_np[user_id][-1]*(curr_len-1)+self.df.loc[index-1, TARGET].values)/curr_len
-        #     self.df_user_np[user_id].append(new_value)
+        user_id, user_idx, index = self.sample_indices[idx]
 
-        len_ = min(self.seq_len, index+1)
-        # indices = self.df_users[user_id][index+1-len_:index+1]
         if self.aug > 0:
             if len_ > 50:
                 if np.random.binomial(1, self.aug_p) == 1:
@@ -64,24 +87,49 @@ class KTDataset(Dataset):
                         cut_ratio = self.aug
                     len_ = max(int(len_ * cut_ratio), 30)
 
-        # len_ = min(seq_len, len(indices))
+        curr_row = np.array(self.df[index,:]).reshape(1,-1)
+        target_idx = self.columns.index(TARGET)
+        if user_id not in self.user_dict:
+            curr_array = curr_row.copy()
+        else:
+            user_hist = self.user_dict[user_id]
+            curr_array = np.concatenate((user_hist, curr_row), axis=0)
 
-        tmp_cate_x = torch.LongTensor(self.cate_df[user_id][index+1-len_:index+1, :])
+        # update dict
+        if not self.submission:
+            if curr_array.shape[0] > self.seq_len:
+                self.user_dict[user_id] = curr_array[-self.seq_len:,:]
+            else:
+                self.user_dict[user_id] = curr_array.copy()
+
+        curr_array[:, target_idx] = np.roll(curr_array[:, target_idx], 1)
+
+        len_ = min(self.seq_len, curr_array.shape[0])
+        curr_array =curr_array[-len_:,:]
+        curr_array[0, target_idx] = self.start_token
+
+        cate_df = curr_array[:, :len(self.cate_cols)]
+        cont_df = curr_array[:, len(self.cate_cols):]
+        target_df = curr_row[-1, -1]
+
+        # prepare cate
+        tmp_cate_x = torch.LongTensor(cate_df.astype(float))
         cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
-        cate_x[-len_:] = tmp_cate_x[-len_:]
 
-        tmp_cont_x = torch.FloatTensor(self.cont_df[user_id][index+1-len_:index+1, :])
-        cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)).zero_()
-        cont_x[-len_:] = tmp_cont_x[-len_:]
+        cate_x[-len_:,:] = tmp_cate_x[-len_:,:]
+
+        tmp_cont_x = torch.FloatTensor(cont_df.astype(float))
+        cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)+1).zero_()
+        cont_x[-len_:,:] = tmp_cont_x[-len_:,:]
 
         mask = torch.ByteTensor(self.seq_len).zero_()
         mask[-len_:] = 1
 
-        if self.target_df is not None:
-            target = torch.FloatTensor(self.target_df[user_id][index])
+        if target_df is not None:
+            target = torch.FloatTensor(np.array(target_df))
         else:
             target = 0
-        #print(cate_x.shape, cont_x.shape, target.shape)
+
         return cate_x, cont_x, mask, target
 
     def __len__(self):
