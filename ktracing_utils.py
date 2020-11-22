@@ -240,7 +240,7 @@ def preprocess_data(df_, parameters=None, **kwargs):
     CFG.cate_cols = parameters['cate_cols']
     CFG.cont_cols = parameters['cont_cols']
 
-    df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    df_.sort_values(['timestamp'], ascending=True, inplace=True)
     df_.reset_index(inplace=True)
 
     df_ = add_new_features(df_, **kwargs)
@@ -473,7 +473,7 @@ def data_pipeline(df_, settings=None, parameters=None, questions_df=None, mapper
                         questions_df=questions_df, mappers_dict=mappers_dict, results_c=results_c)
 
     train_df, cate_offset = transform_df(train_df, parameters, mappers_dict)
-    assert cate_offset == 13790
+    # assert cate_offset == 13790
     return train_df, cate_offset
 
 
