@@ -103,8 +103,10 @@ class TransfomerModel(nn.Module):
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
         head_mask = [None] * self.config.num_hidden_layers
-
-        encoded_layers = self.encoder(seq_emb, extended_attention_mask, head_mask=head_mask)
+        try:
+            encoded_layers = self.encoder(seq_emb, extended_attention_mask, head_mask=head_mask)
+        except:
+            print(seq_emb)
         sequence_output = encoded_layers[-1]
         sequence_output = sequence_output[:, -1]
 

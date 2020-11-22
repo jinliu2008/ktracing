@@ -111,7 +111,8 @@ class KTDataset(Dataset):
         cate_df = curr_array[:, :len(self.cate_cols)]
         cont_df = curr_array[:, len(self.cate_cols):]
         target_df = curr_row[-1, -1]
-
+        if cate_df.min()<0:
+            print(cate_df)
         # prepare cate
         tmp_cate_x = torch.LongTensor(cate_df.astype(float))
         cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
@@ -130,6 +131,8 @@ class KTDataset(Dataset):
         else:
             target = 0
 
+        if cate_x.numpy().min()<0:
+            print(cate_x)
         return cate_x, cont_x, mask, target
 
     def __len__(self):

@@ -101,14 +101,23 @@ def get_questions_df(settings):
     return questions_df
 
 
-def generate_files(settings=None, parameters=None):
+def generate_files(settings=None, parameters=None, submission=False):
+    if submission:
+        input_file_name = 'train.feather'
+        file_path = os.path.join(settings["CLEAN_DATA_DIR"], 'submission')
+    else:
+        input_file_name = 'train_v0.feather'
+        file_path = settings["CLEAN_DATA_DIR"]
+
     questions_df = get_questions_df(settings)
     cate_cols = parameters['cate_cols']
-    mappers_dict_path = os.path.join(settings["CLEAN_DATA_DIR"], 'mappers_dict.pkl')
+
+    mappers_dict_path = os.path.join(file_path, 'mappers_dict.pkl')
     if not os.path.isfile(mappers_dict_path):
-        df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], 'train_v0.feather'))
+        df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], input_file_name))
         questions_df = get_questions_df(settings)
-        df_ = df_.join(questions_df, on='left')
+        df_.set_index('content_id', inplace=True)
+        df_ = df_.join(questions_df, how='left')
         df_.reset_index(inplace=True)
         mappers_dict = {}
         cate_offset = 1
@@ -121,20 +130,39 @@ def generate_files(settings=None, parameters=None):
             cate_offset += len(cate2idx)
         with open(mappers_dict_path, 'wb') as handle:
             pickle.dump(mappers_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    with open(mappers_dict_path, 'rb') as handle:
-        mappers_dict = pickle.load(handle)
+    else:
+        with open(mappers_dict_path, 'rb') as handle:
+            mappers_dict = pickle.load(handle)
 
-    results_c_path = os.path.join(settings["CLEAN_DATA_DIR"], 'results_c.pkl')
+    results_c_path = os.path.join(file_path, 'results_c.pkl')
     if not os.path.isfile(results_c_path):
-        df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], 'train_v0.feather'))
-        results_c = df_.groupby(['content_id']).agg(['mean'])
+        df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], input_file_name))
+        results_c = df_.groupby(['content_id'])['answered_correctly'].agg(['mean'])
         results_c.columns = ["answered_correctly_content"]
         with open(results_c_path, 'wb') as handle:
             pickle.dump(results_c, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    with open(results_c_path, 'rb') as handle:
-        results_c = pickle.load(handle)
+    else:
+        with open(results_c_path, 'rb') as handle:
+            results_c = pickle.load(handle)
 
-    return questions_df, mappers_dict, results_c
+    # create user dictionary
+    results_u_path = os.path.join(file_path, 'user_dict.pkl')
+    if not os.path.isfile(results_u_path):
+        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
+        df_ = df_.groupby('user_id').tail(CFG.window_size)
+        questions_df = get_questions_df(settings)
+        df_ = preprocess_data(df_, settings=settings, parameters=parameters,
+                              questions_df=questions_df, mappers_dict=mappers_dict, results_c=results_c)
+        df_, cate_offset = transform_df(df_, parameters, mappers_dict)
+        df_ = df_[['user_id'] + CFG.features]
+        user_dict = {uid: u.values[:, 1:] for uid, u in df_.groupby('user_id')}
+        with open(results_u_path, 'wb') as handle:
+            pickle.dump(user_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    else:
+        with open(results_u_path, 'rb') as handle:
+            user_dict = pickle.load(handle)
+
+    return questions_df, mappers_dict, results_c, user_dict
 
 
 
@@ -188,10 +216,12 @@ def feature_engineering(df_):
     return df_
 
 
-def  add_new_features(df_, settings, parameters):
-    questions_df, mappers_dict, results_c = generate_files(settings=settings, parameters=parameters)
+def  add_new_features(df_, **kwargs):
+    # questions_df, mappers_dict, results_c = generate_files(settings=settings, parameters=parameters)
 
-    sample_indices = get_samples(df_)
+    # sample_indices = get_samples(df_)
+    questions_df = kwargs['questions_df']
+    results_c = kwargs['results_c']
 
     # df_ = df_.set_index('content_id')
     df_ = pd.concat([df_.reset_index(drop=True), questions_df.reindex(df_['content_id'].values).reset_index(drop=True)],
@@ -200,70 +230,10 @@ def  add_new_features(df_, settings, parameters):
                   axis=1)
     # df_ = feature_engineering(df_).
 
-    return df_, mappers_dict, sample_indices
+    return df_
 
 
-def add_features(df_, settings, parameters, mode='train'):
-    questions_df, mappers_dict, results_c = generate_files(settings=settings, parameters=parameters)
-    df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
-    df_.reset_index(inplace=True)
-
-    if mode == 'validation':
-        results_u = get_user_dict(settings, user_list=df_.user_id.unique().tolist())
-        selected_users = {user: results_u[user] for user in df_.user_id if user in results_u}
-        df_ = pd.concat(list(selected_users.values())+[df_], axis=0)
-        sample_indices = get_sample_indices(df_, results_u)
-    else:
-        sample_indices = get_sample_indices(df_)
-
-    # df_ = df_.set_index('content_id')
-    df_ = pd.concat([df_.reset_index(drop=True), questions_df.reindex(df_['content_id'].values).reset_index(drop=True)],
-                  axis=1)
-    df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
-                  axis=1)
-
-    df_ = feature_engineering(df_)
-    return df_, mappers_dict, sample_indices
-
-
-def add_features_validate(df_, settings, parameters):
-    questions_df, mappers_dict, results_c, results_u = generate_files(settings=settings, parameters=parameters)
-    df_.sort_values(['timestamp'], ascending=True, inplace=True)
-
-    selected_users = {user: results_u[user] for user in df_.users}
-    df_ = pd.concat(list(selected_users.values()), df_, axis=0)
-
-    df_ = df_.set_index('content_id')
-    df_ = df_.join(questions_df, how='left')
-    df_ = df_.join(results_c, how='left')
-    df_.reset_index(inplace=True)
-
-    # df_users = df_.groupby('user_id').groups
-    # df_[['sum_y', 'rolling_avg_lagged_y']] = 0
-    # for user_idx, start_indices in df_users.items():
-    #     df_np = np.zeros((len(start_indices), 2))
-    #     for i, idx in enumerate(start_indices):
-    #         if i == 0:
-    #             if user_idx in results_u:
-    #                 prev_sum = results_u[user_idx]["sum_y"] + 1
-    #                 prev_avg = results_u[user_idx]["rolling_avg_lagged_y"]
-    #             else:
-    #                 prev_sum = 1
-    #                 prev_avg = 0
-    #         else:
-    #             prev_avg = \
-    #                 (prev_avg * prev_sum + df_.loc[prev_idx, 'answered_correctly'])/(prev_sum+1)
-    #             prev_sum = prev_sum + 1
-    #
-    #         prev_idx = idx
-    #         df_np[i, :] = [prev_sum, prev_avg]
-    #     df_[df_['user_id'] == user_idx][['sum_y', 'rolling_avg_lagged_y']] = df_np
-
-    sample_indices = get_sample_indices(df_, results_u)
-    return df_, mappers_dict, sample_indices
-
-
-def preprocess_data(df_, settings=None, parameters=None):
+def preprocess_data(df_, parameters=None, **kwargs):
 
     CFG.cate_cols = parameters['cate_cols']
     CFG.cont_cols = parameters['cont_cols']
@@ -271,43 +241,22 @@ def preprocess_data(df_, settings=None, parameters=None):
     df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
     df_.reset_index(inplace=True)
 
-    df_, mappers_dict, sample_indices = add_new_features(df_, settings, parameters)
-    df_, cate_offset = transform_df(df_, parameters, mappers_dict)
+    df_ = add_new_features(df_, **kwargs)
+    # df_, cate_offset = transform_df(df_, parameters, **kwargs)
 
-    return df_, sample_indices, cate_offset
-
-
-def preprocess(settings=None, parameters=None, mode='train', update_flag=False, output_file=""):
-    output_file_path = os.path.join(settings["CLEAN_DATA_DIR"], output_file)
-    if os.path.isfile(output_file_path) and not update_flag:
-        return
-
-    if mode == 'train':
-        file_name = settings['TRAIN_DATASET']
-        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-        # logic to add features
-
-    if mode == 'validation':
-        file_name = settings['VALIDATION_DATASET']
-        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-    df_.sort_values(['timestamp'], ascending=True, inplace=True)
-    df_, mappers_dict, sample_indices = add_features(df_, settings, parameters, mode=mode)
-    df_, cate_offset = transform_df(df_, parameters, mappers_dict)
-    if output_file:
-        torch.save([df_, sample_indices, cate_offset], output_file_path)
-
-    return df_, sample_indices, cate_offset
-
+    return df_
 
 def transform_df(df_, parameters, mappers_dict):
     cate_cols = parameters['cate_cols']
     cont_cols = parameters['cont_cols']
 
     cate_offset = 1
+
     for col in cate_cols:
         cate2idx = mappers_dict[col]
         df_.loc[:, col] = df_[col].map(cate2idx).fillna(0).astype(int)
         cate_offset += len(cate2idx)
+
     for col in cont_cols:
         df_[col].fillna(0, inplace=True)
     return df_, cate_offset
@@ -353,24 +302,6 @@ def get_samples(df_):
     return sample_indices
 
 
-# generate train sample indices
-def get_sample_indices(df_, results_u=None):
-    # df_.set_index('row_id', inplace=True)
-    # df_.set_index('row_id', inplace=True)
-    row_id_list = df_[df_.content_type_id==False].index
-    sample_indices = []
-    df_users = df_.groupby('user_id').groups
-    for user_idx, start_indices in df_users.items():
-        if isinstance(results_u, dict) and user_idx in results_u:
-            start_idx = len(results_u[user_idx])
-        else:
-            start_idx = 0
-        for num, curr_index in enumerate(start_indices):
-            if (curr_index in row_id_list) and (num >= start_idx):
-                sample_indices.append((user_idx, num))
-    return sample_indices
-
-
 def convert_feather(settings):
     path = settings['RAW_DATA_DIR']
     files = [f for f in os.listdir(path) if f.endswith('.feather')]
@@ -393,6 +324,8 @@ def train(train_loader, model, optimizer, epoch, scheduler):
     global_step = 0
 
     for step, (cate_x, cont_x, mask, y) in enumerate(train_loader):
+        if step == 31:
+            print(step)
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -400,7 +333,10 @@ def train(train_loader, model, optimizer, epoch, scheduler):
         batch_size = cate_x.size(0)
 
         # compute loss
-        pred = model(cate_x, cont_x, mask)
+        try:
+            pred = model(cate_x, cont_x, mask)
+        except:
+            print(pred)
         loss = torch.nn.BCELoss()(pred, y.reshape(-1,1))
 
         # record loss
@@ -530,10 +466,19 @@ def count_parameters(model):
 def get_lr():
     return scheduler.get_lr()[0]
 
-def get_dataloader(df_, settings, parameters, CFG, user_dict={}, prior_df=None):
-    train_df, train_samples, cate_offset = \
-        preprocess_data(df_, settings=settings, parameters=parameters)
+def get_dataloader(df_, settings, parameters, CFG, prior_df=None, submission=False):
+
+    questions_df, mappers_dict, results_c, user_dict = \
+        generate_files(settings=settings, parameters=parameters, submission=submission)
+
+    train_df = \
+        preprocess_data(df_, settings=settings, parameters=parameters,
+                        questions_df=questions_df, mappers_dict=mappers_dict, results_c=results_c)
+
+    train_samples = get_samples(train_df)
+    train_df, cate_offset = transform_df(train_df, parameters, mappers_dict)
     CFG.total_cate_size = cate_offset
+
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
                          user_dict, CFG.features, aug=CFG.aug, prior_df=prior_df)
     train_loader = DataLoader(
@@ -558,6 +503,47 @@ def run_validation(df_, settings=None, parameters=None, CFG=None, model_name="",
     auc = metrics.roc_auc_score(groundtruth, prediction)
     print('Validation AUC loss: ', auc)
 
+def run_sample_test(settings, parameters):
+
+    questions_df, mappers_dict, results_c, user_dict = \
+        generate_files(settings=settings, parameters=parameters, submission=True)
+
+    df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
+    #
+    df_sample[TARGET] = 0.5
+
+    sample_batch = []
+    # batch 1
+    sample_batch.append(df_sample.iloc[:18])
+    # batch 2
+    sample_batch.append(df_sample.iloc[18:45])
+    # batch 3
+    sample_batch.append(df_sample.iloc[45:71])
+    # batch 4
+    sample_batch.append(df_sample.iloc[71:])
+
+    df_batch_prior = None
+    i = 0
+    answers_all = []
+    predictions_all = []
+    for test_batch in sample_batch:
+        i += 1
+        # update state
+        if df_batch_prior is not None:
+            answers = eval(test_batch['prior_group_answers_correct'].iloc[0])
+            df_batch_prior['answered_correctly'] = answers
+            answers_all += answers.copy()
+            predictions_all += [p[0] for p in predictions.tolist()]
+
+        # save prior batch for state update
+        test_loader, test_df, _ = get_dataloader(test_batch, settings, parameters, CFG,
+                                                 user_dict=user_dict, prior_df=df_batch_prior, submission=True)
+        df_batch_prior = test_df[['user_id'] + CFG.features]
+        predictions = run_test(test_loader, settings=settings, CFG=CFG, model_name=model_file_name)
+
+        # get state
+        df_batch = test_batch[test_batch.content_type_id == 0]
+        df_batch['answered_correctly'] = predictions
 
 def run_test(valid_loader, settings=None, CFG=None, model_name=""):
 
