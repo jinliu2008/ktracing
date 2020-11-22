@@ -92,15 +92,15 @@ def main():
         )
 
 
-        # user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
-        # print(f'epoch:{epoch} curr start user len:', len(user_dict))
-        # file_name = settings['VALIDATION_DATASET']
-        # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-        #                model_name=model_file_name, user_dict=user_dict)
+        user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
+        print(f'epoch:{epoch} validation user len:', len(user_dict))
+
+        valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], settings['VALIDATION_DATASET']))
+        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
+                       model_name=model_file_name, user_dict=user_dict)
 
         user_dict = get_user_dict(settings, parameters=parameters, submission_flag=True)
-        print(f'epoch:{epoch} curr start user len:', len(user_dict))
+        print(f'epoch:{epoch} submission user len:', len(user_dict))
 
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
         #
@@ -131,8 +131,6 @@ def main():
 
             predictions, df_batch_prior = run_submission(test_batch, settings, parameters, CFG, model_file_name,
                            user_dict=user_dict, prior_df=df_batch_prior)
-
-
             # get state
             df_batch = test_batch[test_batch.content_type_id == 0]
             df_batch['answered_correctly'] = predictions
