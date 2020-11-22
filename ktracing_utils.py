@@ -151,9 +151,11 @@ def generate_files(settings=None, parameters=None, submission=False):
         df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
         df_ = df_.groupby('user_id').tail(CFG.window_size)
         questions_df = get_questions_df(settings)
-        df_ = preprocess_data(df_, settings=settings, parameters=parameters,
-                              questions_df=questions_df, mappers_dict=mappers_dict, results_c=results_c)
-        df_, cate_offset = transform_df(df_, parameters, mappers_dict)
+
+        df_, cate_offset = \
+            data_pipeline(df_, settings=settings, parameters=parameters,
+                          questions_df=questions_df, mappers_dict=mappers_dict, results_c=results_c)
+
         df_ = df_[['user_id'] + CFG.features]
         user_dict = {uid: u.values[:, 1:] for uid, u in df_.groupby('user_id')}
         with open(results_u_path, 'wb') as handle:
@@ -463,24 +465,37 @@ def count_parameters(model):
 def get_lr():
     return scheduler.get_lr()[0]
 
-def get_dataloader(df_, settings, parameters, CFG, prior_df=None, submission=False):
 
-    questions_df, mappers_dict, results_c, user_dict = \
-        generate_files(settings=settings, parameters=parameters, submission=submission)
+def data_pipeline(df_, settings=None, parameters=None, questions_df=None, mappers_dict=None, results_c=None):
 
     train_df = \
         preprocess_data(df_, settings=settings, parameters=parameters,
                         questions_df=questions_df, mappers_dict=mappers_dict, results_c=results_c)
 
-    train_samples = get_samples(train_df)
     train_df, cate_offset = transform_df(train_df, parameters, mappers_dict)
+    assert cate_offset == 13790
+    return train_df, cate_offset
+
+
+def get_dataloader(df_, settings, parameters, CFG, prior_df=None, submission=False):
+
+    questions_df, mappers_dict, results_c, user_dict = \
+        generate_files(settings=settings, parameters=parameters, submission=submission)
+
+    train_df, cate_offset = \
+        data_pipeline(df_, settings=settings, parameters=parameters,
+                      questions_df=questions_df, mappers_dict=mappers_dict, results_c=results_c)
+
     CFG.total_cate_size = cate_offset
+
+    train_samples = get_samples(train_df)
 
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
                          user_dict, CFG.features, aug=CFG.aug, prior_df=prior_df)
     train_loader = DataLoader(
         train_db, batch_size=CFG.batch_size, shuffle=False,
         num_workers=0, pin_memory=True)
+
     return train_loader, train_df, len(train_samples)
 
 def update_params(CFG, parameters):
