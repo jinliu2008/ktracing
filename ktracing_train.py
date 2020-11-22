@@ -34,7 +34,7 @@ def main():
     logging.info(f'CFG: {CFG.__dict__}')
     file_name = settings['TRAIN_DATASET']
     df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-    train_loader, _, sample_size = get_dataloader(df_, settings, parameters, CFG, submission=False)
+    train_loader, _, sample_size = get_dataloader(df_, settings, parameters, CFG, train_flag=True, submission=False)
     model = encoders[CFG.encoder](CFG)
     model.cuda()
     model._dropout = CFG.dropout
@@ -90,7 +90,8 @@ def main():
         file_name = settings['VALIDATION_DATASET']
         valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
 
-        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG, model_name=model_file_name)
+        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
+                       train_flag=False, model_name=model_file_name)
 
     df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
     #
@@ -121,7 +122,7 @@ def main():
 
         # save prior batch for state update
         test_loader, test_df, _ = get_dataloader(test_batch, settings, parameters, CFG,
-        prior_df=df_batch_prior, submission=True)
+        train_flag=False, prior_df=df_batch_prior, submission=True)
         df_batch_prior = test_df[['user_id'] + CFG.features]
         predictions = run_test(test_loader, settings=settings, CFG=CFG, model_name=model_file_name)
 

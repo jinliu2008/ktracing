@@ -477,7 +477,7 @@ def data_pipeline(df_, settings=None, parameters=None, questions_df=None, mapper
     return train_df, cate_offset
 
 
-def get_dataloader(df_, settings, parameters, CFG, prior_df=None, submission=False):
+def get_dataloader(df_, settings, parameters, CFG, prior_df=None, train_flag=True, submission=False):
 
     questions_df, mappers_dict, results_c, user_dict = \
         generate_files(settings=settings, parameters=parameters, submission=submission)
@@ -489,9 +489,12 @@ def get_dataloader(df_, settings, parameters, CFG, prior_df=None, submission=Fal
     CFG.total_cate_size = cate_offset
 
     train_samples = get_samples(train_df)
-
-    train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
-                         user_dict, CFG.features, aug=CFG.aug, prior_df=prior_df)
+    if train_flag:
+        train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
+                             {}, CFG.features, aug=CFG.aug, prior_df=prior_df)
+    else:
+        train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
+                             user_dict, CFG.features, aug=CFG.aug, prior_df=prior_df)
     train_loader = DataLoader(
         train_db, batch_size=CFG.batch_size, shuffle=False,
         num_workers=0, pin_memory=True)
