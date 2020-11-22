@@ -7,7 +7,7 @@ import json
 
 warnings.filterwarnings(action='ignore')
 
-submission_flag = 0
+submission_flag = 1
 
 def main():
 
@@ -33,7 +33,7 @@ def main():
     if submission_flag == 1:
         results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
     else:
-        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict_v0.pkl')
+        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'submission', 'user_dict.pkl')
     start = time.time()
     if not os.path.isfile(results_u_path):
         if submission_flag == 1:
@@ -112,12 +112,10 @@ def main():
             settings['MODEL_DIR'], model_file_name,
         )
 
-        file_name = settings['VALIDATION_DATASET']
-
-        valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-
-        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-                       model_name=model_file_name, user_dict=user_dict)
+        # file_name = settings['VALIDATION_DATASET']
+        # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
+        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
+        #                model_name=model_file_name, user_dict=user_dict)
 
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
         #

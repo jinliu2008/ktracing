@@ -268,7 +268,7 @@ def preprocess_data(df_, settings=None, parameters=None):
     CFG.cate_cols = parameters['cate_cols']
     CFG.cont_cols = parameters['cont_cols']
 
-    df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    df_.sort_values(['timestamp'], ascending=True, inplace=True)
     df_.reset_index(inplace=True)
 
     df_, mappers_dict, sample_indices = add_new_features(df_, settings, parameters)
