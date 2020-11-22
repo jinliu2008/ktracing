@@ -17,23 +17,6 @@ for key, value in parameters.items():
 
 def main():
 
-    results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
-    start = time.time()
-    if not os.path.isfile(results_u_path):
-
-        file_name = "train_v0.feather"
-        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-        df_ = df_.groupby('user_id').tail(CFG.window_size)
-        df_, _, _ = preprocess_data(df_, parameters=parameters, settings=settings)
-        features = CFG.cate_cols + CFG.cont_cols + [TARGET]
-        df_ = df_[['user_id'] + features]
-        user_dict = {uid: u.values[:, 1:] for uid, u in df_.groupby('user_id')}
-        with open(results_u_path, 'wb') as handle:
-            pickle.dump(user_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    else:
-        with open(results_u_path, 'rb') as handle:
-            user_dict = pickle.load(handle)
-    print(f'process time: {time.time() - start} seconds')
     random.seed(CFG.seed)
     np.random.seed(CFG.seed)
     torch.manual_seed(CFG.seed)
@@ -42,16 +25,16 @@ def main():
     model_file_name = 'b-128_a-TRANSFORMER_e-20_h-20_d-0.2_l-2_hd-10_s-123_len-20_aug-0.0_da-trainsamplev1_epoch-0.pt'
     CFG.batch_size = 128
     CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
-    settings['VALIDATION_DATASET'] = 'validation_sample_v1.feather'
 
+    user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
+    settings['VALIDATION_DATASET'] = 'validation_sample_v1.feather'
     file_name = settings['VALIDATION_DATASET']
     valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-
     run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
                    model_name=model_file_name, user_dict=user_dict)
 
+    user_dict = get_user_dict(settings, parameters=parameters, submission_flag=True)
     df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
-    #
     df_sample[TARGET] = 0.5
     sample_batch = []
     # batch 1

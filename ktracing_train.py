@@ -30,8 +30,8 @@ def main():
     torch.backends.cudnn.deterministic = True
     CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
 
-    user_dict = get_user_dict(settings, submission_flag=True)
-    print('curr start user len:', len(user_dict))
+    # user_dict = get_user_dict(settings, submission_flag=True)
+    # print('curr start user len:', len(user_dict))
 
     print(f'CFG: {CFG.__dict__}')
     logging.info(f'CFG: {CFG.__dict__}')
@@ -90,14 +90,17 @@ def main():
         },
             settings['MODEL_DIR'], model_file_name,
         )
-        #275030867
-        # user_dict = get_user_dict(settings, submission_flag=True)
-        print(f'epoch:{epoch} curr start user len:', len(user_dict))
 
+
+        # user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
+        # print(f'epoch:{epoch} curr start user len:', len(user_dict))
         # file_name = settings['VALIDATION_DATASET']
         # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
         # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
         #                model_name=model_file_name, user_dict=user_dict)
+
+        user_dict = get_user_dict(settings, parameters=parameters, submission_flag=True)
+        print(f'epoch:{epoch} curr start user len:', len(user_dict))
 
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
         #
@@ -126,16 +129,9 @@ def main():
                 answers_all += answers.copy()
                 predictions_all += [p[0] for p in predictions.tolist()]
 
-            # save prior batch for state update
-            # predictions, df_batch_prior =\
-            #     run_submission(test_batch, settings, parameters, CFG, model_file_name, prior_df=df_batch_prior)
+            predictions, df_batch_prior = run_submission(test_batch, settings, parameters, CFG, model_file_name,
+                           user_dict=user_dict, prior_df=df_batch_prior)
 
-            # user_dict = get_user_dict(settings, submission_flag=True)
-            print('user len:', len(user_dict))
-            test_loader, test_df, _ = get_dataloader(test_batch, settings, parameters, CFG,
-                                                     user_dict=user_dict, prior_df=df_batch_prior)
-            df_batch_prior = test_df[['user_id'] + CFG.features]
-            predictions = run_test(test_loader, settings=settings, CFG=CFG, model_name=model_file_name)
 
             # get state
             df_batch = test_batch[test_batch.content_type_id == 0]
