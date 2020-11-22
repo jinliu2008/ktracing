@@ -30,30 +30,9 @@ def main():
     torch.backends.cudnn.deterministic = True
     CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
 
-    if submission_flag == 1:
-        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
-    else:
-        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'submission', 'user_dict.pkl')
-    start = time.time()
-    if not os.path.isfile(results_u_path):
-        if submission_flag == 1:
-            input_file_name = "train.feather"
-        else:
-            input_file_name = "train_v0.feather"
-        print(f'input: {input_file_name}')
-        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
-        df_ = df_.groupby('user_id').tail(CFG.window_size)
-        df_, _, _ = preprocess_data(df_, parameters=parameters, settings=settings)
+    user_dict = get_user_dict(settings, submission_flag=True)
+    print('curr start user len:', len(user_dict))
 
-        df_ = df_[['user_id'] + CFG.features]
-        user_dict = {uid: u.values[:, 1:] for uid, u in df_.groupby('user_id')}
-        with open(results_u_path, 'wb') as handle:
-            pickle.dump(user_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    else:
-        with open(results_u_path, 'rb') as handle:
-            user_dict = pickle.load(handle)
-
-    print(f'process time: {time.time() - start} seconds')
     print(f'CFG: {CFG.__dict__}')
     logging.info(f'CFG: {CFG.__dict__}')
     file_name = settings['TRAIN_DATASET']
@@ -111,6 +90,9 @@ def main():
         },
             settings['MODEL_DIR'], model_file_name,
         )
+        #275030867
+        # user_dict = get_user_dict(settings, submission_flag=True)
+        print(f'epoch:{epoch} curr start user len:', len(user_dict))
 
         # file_name = settings['VALIDATION_DATASET']
         # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
@@ -145,6 +127,11 @@ def main():
                 predictions_all += [p[0] for p in predictions.tolist()]
 
             # save prior batch for state update
+            # predictions, df_batch_prior =\
+            #     run_submission(test_batch, settings, parameters, CFG, model_file_name, prior_df=df_batch_prior)
+
+            # user_dict = get_user_dict(settings, submission_flag=True)
+            print('user len:', len(user_dict))
             test_loader, test_df, _ = get_dataloader(test_batch, settings, parameters, CFG,
                                                      user_dict=user_dict, prior_df=df_batch_prior)
             df_batch_prior = test_df[['user_id'] + CFG.features]

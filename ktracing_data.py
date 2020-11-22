@@ -42,7 +42,7 @@ def update_user_feats(df, answered_correctly_sum_u_dict, count_u_dict):
 
 
 class KTDataset(Dataset):
-    def __init__(self, cfg, df, sample_indices, user_dict, columns, aug=0.0, aug_p=0.5, prior_df=None):
+    def __init__(self, cfg, df, sample_indices, columns, user_dict={}, aug=0.0, aug_p=0.5, prior_df=None):
         self.cfg = cfg
         self.df = df
 

@@ -157,16 +157,31 @@ def build_conn(df_users_content, chunk_size=20000):
     return conn
 
 
-def get_user_dict(settings, user_list=[]):
-    df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], 'train_v0.feather'))
-    # df_ = df_[df_.answered_correctly != -1]
-    if user_list:
-        df_ = df_[df_.user_id.isin(user_list)].groupby('user_id').tail(CFG.window_size)
+def get_user_dict(settings, submission_flag=True):
+
+    if submission_flag:
+        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'submission', 'user_dict.pkl')
     else:
+        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
+
+    if not os.path.isfile(results_u_path):
+        if submission_flag:
+            input_file_name = "train.feather"
+        else:
+            input_file_name = "train_v0.feather"
+
+        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
         df_ = df_.groupby('user_id').tail(CFG.window_size)
-    # df_.reset_index(drop=True).to_feather(results_u_path)
-    results_u = {uid: u for uid, u in df_.groupby('user_id')}
-    return results_u
+        df_, _, _ = preprocess_data(df_, parameters=parameters, settings=settings)
+
+        df_ = df_[['user_id'] + CFG.features]
+        user_dict = {uid: u.values[:, 1:] for uid, u in df_.groupby('user_id')}
+        with open(results_u_path, 'wb') as handle:
+            pickle.dump(user_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    else:
+        with open(results_u_path, 'rb') as handle:
+            user_dict = pickle.load(handle)
+    return user_dict
 
 
 def update_record(results_u, uid, record):
@@ -530,12 +545,15 @@ def count_parameters(model):
 def get_lr():
     return scheduler.get_lr()[0]
 
-def get_dataloader(df_, settings, parameters, CFG, user_dict={}, prior_df=None):
+def get_dataloader(df_, settings, parameters, CFG, **kwargs):
     train_df, train_samples, cate_offset = \
         preprocess_data(df_, settings=settings, parameters=parameters)
+    assert cate_offset == 13790
     CFG.total_cate_size = cate_offset
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
-                         user_dict, CFG.features, aug=CFG.aug, prior_df=prior_df)
+                         CFG.features, user_dict=kwargs.get('user_dict', {}),
+                         aug=kwargs.get('aug', CFG.aug), prior_df=kwargs.get('prior_df', None))
+
     train_loader = DataLoader(
         train_db, batch_size=CFG.batch_size, shuffle=False,
         num_workers=0, pin_memory=True)
@@ -557,6 +575,20 @@ def run_validation(df_, settings=None, parameters=None, CFG=None, model_name="",
     auc_score, prediction, groundtruth = validate(valid_loader, model)
     auc = metrics.roc_auc_score(groundtruth, prediction)
     print('Validation AUC loss: ', auc)
+
+
+def run_submission(test_batch, settings, parameters, CFG, model_name, **kwargs):
+    if 'user_dict' in kwargs:
+        user_dict = kwargs['user_dict']
+    else:
+        user_dict = get_user_dict(settings, submission_flag=True)
+    test_loader, test_df, _ = \
+        get_dataloader(test_batch, settings, parameters, CFG,
+                       user_dict=user_dict, prior_df=kwargs.get('prior_df', None))
+    df_batch_prior = test_df[['user_id'] + CFG.features]
+    predictions = run_test(test_loader, settings=settings, CFG=CFG, model_name=model_name)
+
+    return predictions, df_batch_prior
 
 
 def run_test(valid_loader, settings=None, CFG=None, model_name=""):
