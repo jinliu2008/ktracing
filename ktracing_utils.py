@@ -488,11 +488,11 @@ def update_params(CFG, parameters):
         setattr(CFG, key, value)
     return CFG
 
-def run_validation(df_, settings=None, parameters=None, CFG=None, model_name="", user_dict={}):
+def run_validation(df_, settings=None, parameters=None, CFG=None, model_name=""):
 
     CFG = parse_model_name(CFG, model_name)
 
-    valid_loader, _, _ = get_dataloader(df_, settings, parameters, CFG, user_dict=user_dict)
+    valid_loader, _, _ = get_dataloader(df_, settings, parameters, CFG, submission=False)
 
     model = load_model(settings, CFG, model_name)
 

@@ -87,12 +87,10 @@ def main():
             settings['MODEL_DIR'], model_file_name,
         )
 
-        # file_name = settings['VALIDATION_DATASET']
-        # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-        #
-        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-        #                model_name=model_file_name, user_dict=user_dict)
+        file_name = settings['VALIDATION_DATASET']
+        valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
 
+        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG, model_name=model_file_name)
 
     df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
     #
