@@ -114,7 +114,7 @@ def generate_files(settings=None, parameters=None, submission=False):
 
     mappers_dict_path = os.path.join(file_path, 'mappers_dict.pkl')
     if not os.path.isfile(mappers_dict_path):
-        df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], input_file_name))
+        df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], 'train.feather'))
         questions_df = get_questions_df(settings)
         df_.set_index('content_id', inplace=True)
         df_ = df_.join(questions_df, how='left')
@@ -324,8 +324,7 @@ def train(train_loader, model, optimizer, epoch, scheduler):
     global_step = 0
 
     for step, (cate_x, cont_x, mask, y) in enumerate(train_loader):
-        if step == 31:
-            print(step)
+
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -333,14 +332,12 @@ def train(train_loader, model, optimizer, epoch, scheduler):
         batch_size = cate_x.size(0)
 
         # compute loss
-        try:
-            pred = model(cate_x, cont_x, mask)
-        except:
-            print(pred)
-        loss = torch.nn.BCELoss()(pred, y.reshape(-1,1))
+        pred = model(cate_x, cont_x, mask)
+        loss = torch.nn.BCELoss()(pred, y.reshape(-1, 1))
 
         # record loss
         losses.update(loss.item(), batch_size)
+
         if CFG.gradient_accumulation_steps > 1:
             loss = loss / CFG.gradient_accumulation_steps
 
