@@ -87,50 +87,49 @@ def main():
             settings['MODEL_DIR'], model_file_name,
         )
 
-        file_name = settings['VALIDATION_DATASET']
-        valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
+        # file_name = settings['VALIDATION_DATASET']
+        # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
+        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
+        #                model_name=model_file_name)
 
-        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-                       train_flag=False, model_name=model_file_name)
+        df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
+        #
+        df_sample[TARGET] = 0.5
 
-    df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
-    #
-    df_sample[TARGET] = 0.5
+        sample_batch = []
+        # batch 1
+        sample_batch.append(df_sample.iloc[:18])
+        # batch 2
+        sample_batch.append(df_sample.iloc[18:45])
+        # batch 3
+        sample_batch.append(df_sample.iloc[45:71])
+        # batch 4
+        sample_batch.append(df_sample.iloc[71:])
 
-    sample_batch = []
-    # batch 1
-    sample_batch.append(df_sample.iloc[:18])
-    # batch 2
-    sample_batch.append(df_sample.iloc[18:45])
-    # batch 3
-    sample_batch.append(df_sample.iloc[45:71])
-    # batch 4
-    sample_batch.append(df_sample.iloc[71:])
+        df_batch_prior = None
+        i = 0
+        answers_all = []
+        predictions_all = []
+        for test_batch in sample_batch:
+            i += 1
+            # update state
+            if df_batch_prior is not None:
+                answers = eval(test_batch['prior_group_answers_correct'].iloc[0])
+                df_batch_prior['answered_correctly'] = answers
+                answers_all += answers.copy()
+                predictions_all += [p[0] for p in predictions.tolist()]
 
-    df_batch_prior = None
-    i = 0
-    answers_all = []
-    predictions_all = []
-    for test_batch in sample_batch:
-        i += 1
-        # update state
-        if df_batch_prior is not None:
-            answers = eval(test_batch['prior_group_answers_correct'].iloc[0])
-            df_batch_prior['answered_correctly'] = answers
-            answers_all += answers.copy()
-            predictions_all += [p[0] for p in predictions.tolist()]
+            # save prior batch for state update
+            test_loader, test_df, _ = get_dataloader(test_batch, settings, parameters, CFG,
+            train_flag=False, prior_df=df_batch_prior, submission=True)
+            df_batch_prior = test_df[['user_id'] + CFG.features]
+            predictions = run_test(test_loader, settings=settings, CFG=CFG, model_name=model_file_name)
 
-        # save prior batch for state update
-        test_loader, test_df, _ = get_dataloader(test_batch, settings, parameters, CFG,
-        train_flag=False, prior_df=df_batch_prior, submission=True)
-        df_batch_prior = test_df[['user_id'] + CFG.features]
-        predictions = run_test(test_loader, settings=settings, CFG=CFG, model_name=model_file_name)
+            # get state
+            df_batch = test_batch[test_batch.content_type_id == 0]
+            df_batch['answered_correctly'] = predictions
 
-        # get state
-        df_batch = test_batch[test_batch.content_type_id == 0]
-        df_batch['answered_correctly'] = predictions
-
-    print('sample auc:', metrics.roc_auc_score(answers_all, predictions_all))
+        print('sample auc:', metrics.roc_auc_score(answers_all, predictions_all))
 
 if __name__ == '__main__':
     main()

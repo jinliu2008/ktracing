@@ -510,7 +510,7 @@ def run_validation(df_, settings=None, parameters=None, CFG=None, model_name="")
 
     CFG = parse_model_name(CFG, model_name)
 
-    valid_loader, _, _ = get_dataloader(df_, settings, parameters, CFG, submission=False)
+    valid_loader, _, _ = get_dataloader(df_, settings, parameters, CFG, train_flag=False, submission=False)
 
     model = load_model(settings, CFG, model_name)
 
