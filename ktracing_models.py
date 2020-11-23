@@ -128,14 +128,19 @@ class LSTMModel(nn.Module):
         cont_col_size = len(cfg.cont_cols)
         self.cate_emb = nn.Embedding(cfg.total_cate_size, cfg.emb_size, padding_idx=0)
         self.cate_proj = nn.Sequential(
-            nn.Linear(cfg.emb_size *cate_col_size, cfg.hidden_size//2),
-            nn.LayerNorm(cfg.hidden_size//2)
+            nn.Linear(cfg.emb_size *cate_col_size, cfg.hidden_size//2-1),
+            nn.LayerNorm(cfg.hidden_size//2-1)
         )
         self.cont_emb = nn.Sequential(
-            nn.Linear(cont_col_size, cfg.hidden_size//2),
-            nn.LayerNorm(cfg.hidden_size//2),
+            nn.Linear(cont_col_size, cfg.hidden_size//2-1),
+            nn.LayerNorm(cfg.hidden_size//2-1),
         )
 
+        self.response_emb = nn.Embedding(4, 2, padding_idx=0)
+        self.response_proj = nn.Sequential(
+            nn.Linear(2, 2),
+            nn.LayerNorm(2),
+        )
         self.encoder = nn.LSTM(cfg.hidden_size,
                                cfg.hidden_size, cfg.nlayers, dropout=cfg.dropout, batch_first=True)
 
@@ -149,14 +154,17 @@ class LSTMModel(nn.Module):
             )
         self.reg_layer = get_reg()
 
-    def forward(self, cate_x, cont_x, mask):
+    def forward(self, cate_x, cont_x, response, mask):
         batch_size = cate_x.size(0)
 
         cate_emb = self.cate_emb(cate_x).view(batch_size, self.cfg.seq_len, -1)
         cate_emb = self.cate_proj(cate_emb)
         cont_emb = self.cont_emb(cont_x)
 
-        seq_emb = torch.cat([cate_emb, cont_emb], 2)
+        res_emb = self.response_emb(response).view(batch_size, self.cfg.seq_len, -1)
+        res_emb = self.response_proj(res_emb)
+
+        seq_emb = torch.cat([cate_emb, cont_emb, res_emb], 2)
 
         _, (h, c) = self.encoder(seq_emb)
         sequence_output = h[-1]

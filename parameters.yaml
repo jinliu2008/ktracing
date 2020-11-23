@@ -1,5 +1,5 @@
-cate_cols: ['content_id', 'part']
-cont_cols: ["answered_correctly_content"]
+cate_cols: ['content_id', 'part', "task_container_id" ]
+cont_cols: ["answered_correctly_content", 'prior_question_elapsed_time', 'prior_question_had_explanation', 'timestamp']
 
 learning_rate: 1.0e-3
 batch_size: 128
@@ -18,3 +18,4 @@ hidden_size: 20
 nlayers: 2
 nheads: 10
 seq_len: 20
+encoder: 'TRANSFORMER'

@@ -137,7 +137,7 @@ def generate_files(settings=None, parameters=None, submission=False):
     results_c_path = os.path.join(file_path, 'results_c.pkl')
     if not os.path.isfile(results_c_path):
         df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], input_file_name))
-        results_c = df_.groupby(['content_id'])['answered_correctly'].agg(['mean'])
+        results_c = df_[df_.content_type_id == 0].groupby(['content_id'])['answered_correctly'].agg(['mean'])
         results_c.columns = ["answered_correctly_content"]
         with open(results_c_path, 'wb') as handle:
             pickle.dump(results_c, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -182,6 +182,7 @@ def get_user_dict(settings, parameters=None, submission_flag=True):
             input_file_name = "train_v0.feather"
 
         df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
+        df_.sort_values(['timestamp'], ascending=True, inplace=True)
         df_ = df_.groupby('user_id').tail(CFG.window_size)
         df_, _, _ = preprocess_data(df_, parameters=parameters, settings=settings)
 
@@ -224,7 +225,8 @@ def  add_new_features(df_, settings, parameters, **kwargs):
                   axis=1)
     df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
-    # df_ = feature_engineering(df_).
+
+    # df_ = feature_engineering(df_)
 
     return df_, mappers_dict, sample_indices
 
@@ -482,7 +484,7 @@ def get_lr():
 def get_dataloader(df_, settings, parameters, CFG, **kwargs):
     train_df, train_samples, cate_offset = \
         preprocess_data(df_, settings=settings, parameters=parameters, submission=kwargs.get('submission', False))
-    assert cate_offset == 13790
+    # assert cate_offset == 13790
     CFG.total_cate_size = cate_offset
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
                          CFG.features, user_dict=kwargs.get('user_dict', {}),

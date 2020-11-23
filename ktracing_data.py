@@ -98,7 +98,7 @@ class KTDataset(Dataset):
         # update dict
         if not self.submission:
             if curr_array.shape[0] > self.seq_len:
-                self.user_dict[user_id] = curr_array[-self.seq_len:,:]
+                self.user_dict[user_id] = curr_array[-self.seq_len:,:].copy()
             else:
                 self.user_dict[user_id] = curr_array.copy()
 
@@ -109,8 +109,29 @@ class KTDataset(Dataset):
         curr_array[0, target_idx] = self.start_token
 
         cate_df = curr_array[:, :len(self.cate_cols)]
-        cont_df = curr_array[:, len(self.cate_cols):-1]
-        response_df = curr_array[:,-1:]
+
+        #prior elaspse time
+        if 'prior_question_elapsed_time' in self.columns:
+            elpase_time_idx = self.columns.index('prior_question_elapsed_time')
+            curr_array[:, elpase_time_idx] = curr_array[:, elpase_time_idx]/1e6
+        boolean_idx = []
+        if 'prior_question_had_explanation' in self.columns:
+            had_explanation_idx = self.columns.index('prior_question_had_explanation')
+            boolean_idx.append(had_explanation_idx)
+
+        if 'timestamp' in self.columns:
+            timestamp_idx = self.columns.index('timestamp')
+            curr_array[1:, timestamp_idx] = np.clip(np.diff(curr_array[:, timestamp_idx])/1e5,0,None)
+            curr_array[0, timestamp_idx] = 0
+
+        cols = len(self.columns)
+        cont_df = curr_array[:, len(self.cate_cols):-1].copy()
+        for c in range(len(self.cate_cols), cols-1):
+            if c in boolean_idx:
+                continue
+            cont_df[:, c-len(self.cate_cols)] = np.log1p(cont_df[:, c-len(self.cate_cols)].astype(float))
+
+        response_df = curr_array[:, -1:]
         target_df = curr_row[-1, -1]
 
         # prepare cate
@@ -132,7 +153,7 @@ class KTDataset(Dataset):
         mask[-len_:] = 1
 
         if target_df is not None:
-            target = torch.FloatTensor(np.array(target_df))
+            target = torch.FloatTensor(np.array(target_df).astype(float))
         else:
             target = 0
 
