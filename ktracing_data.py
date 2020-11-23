@@ -118,7 +118,7 @@ class KTDataset(Dataset):
         #prior elaspse time
         if 'prior_question_elapsed_time' in self.columns:
             elpase_time_idx = self.columns.index('prior_question_elapsed_time')
-            curr_array[:, elpase_time_idx] = curr_array[:, elpase_time_idx]/1e6
+            curr_array[:, elpase_time_idx] = curr_array[:, elpase_time_idx]/300e3
         boolean_idx = []
         if 'prior_question_had_explanation' in self.columns:
             had_explanation_idx = self.columns.index('prior_question_had_explanation')
@@ -126,7 +126,7 @@ class KTDataset(Dataset):
 
         if 'timestamp' in self.columns:
             timestamp_idx = self.columns.index('timestamp')
-            curr_array[1:, timestamp_idx] = np.clip(np.diff(curr_array[:, timestamp_idx])/1e5,0,None)
+            curr_array[1:, timestamp_idx] = np.clip(np.diff(curr_array[:, timestamp_idx])/300e3, 0, 10)
             curr_array[0, timestamp_idx] = 0
 
         cols = len(self.columns)

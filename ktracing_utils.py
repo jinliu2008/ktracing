@@ -124,7 +124,7 @@ def generate_files(settings=None, parameters=None, submission=False):
         for col in (cate_cols):
             cate2idx = {}
             for v in df_[col].unique():
-                if (v != v) | (v == None): continue
+                if (v != v) |pd.isna(v)| (v == None): continue
                 cate2idx[v] = len(cate2idx) + cate_offset
             mappers_dict[col] = cate2idx
             cate_offset += len(cate2idx)
@@ -421,18 +421,15 @@ def validate(valid_loader, model):
 
         cate_x, cont_x, response, mask, y = cate_x.cuda(), cont_x.cuda(), response.cuda(), mask.cuda(), y.cuda()
         batch_size = cate_x.size(0)
-        try:
 
-            # compute loss
-            with torch.no_grad():
-                pred = model(cate_x, cont_x, response, mask)
-                auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
-                losses.update(auc, batch_size)
-            predictions.append(pred.detach().cpu())
-            ground_truth.append(y.cpu())
+        # compute loss
+        with torch.no_grad():
+            pred = model(cate_x, cont_x, response, mask)
+            auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
+            losses.update(auc, batch_size)
+        predictions.append(pred.detach().cpu())
+        ground_truth.append(y.cpu())
 
-        except Exception as e:
-            print('Failed: ' + str(e))
 
     predictions = torch.cat(predictions).numpy()
     ground_truths = torch.cat(ground_truth).numpy()
