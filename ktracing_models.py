@@ -38,22 +38,27 @@ class TransfomerModel(nn.Module):
         super(TransfomerModel, self).__init__()
         self.cfg = cfg
         cate_col_size = len(cfg.cate_cols)
-        cont_col_size = len(cfg.cont_cols)+1
+        cont_col_size = len(cfg.cont_cols)
 
         self.cate_emb = nn.Embedding(cfg.total_cate_size, cfg.emb_size, padding_idx=0)
-        self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)
+        # self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)
 
         # self.position_emb_nn = nn.Embedding(cfg.emb_size, cfg.hidden_size)
         self.cate_proj = nn.Sequential(
-            nn.Linear(cfg.emb_size * cate_col_size, cfg.hidden_size // 2),
-            nn.LayerNorm(cfg.hidden_size // 2),
+            nn.Linear(cfg.emb_size * cate_col_size, cfg.hidden_size // 2-1),
+            nn.LayerNorm(cfg.hidden_size // 2-1),
         )
 
         self.cont_emb = nn.Sequential(
-            nn.Linear(cont_col_size, cfg.hidden_size // 2),
-            nn.LayerNorm(cfg.hidden_size // 2),
+            nn.Linear(cont_col_size, cfg.hidden_size // 2-1),
+            nn.LayerNorm(cfg.hidden_size // 2-1),
         )
 
+        self.response_emb = nn.Embedding(4, 2, padding_idx=0)
+        self.response_proj = nn.Sequential(
+            nn.Linear(2, 2),
+            nn.LayerNorm(2),
+        )
         self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)
 
         self.config = BertConfig(
@@ -82,7 +87,7 @@ class TransfomerModel(nn.Module):
 
         self.reg_layer = get_reg()
 
-    def forward(self, cate_x, cont_x, mask):
+    def forward(self, cate_x, cont_x, response, mask):
         batch_size = cate_x.size(0)
 
         # cate_x = self.cate_pos_encoder(cate_x)
@@ -91,7 +96,11 @@ class TransfomerModel(nn.Module):
 
         # cont_x = self.cont_pos_encoder(cont_x)
         cont_emb = self.cont_emb(cont_x)
-        seq_emb = torch.cat([cate_emb, cont_emb], 2)
+
+        res_emb = self.response_emb(response).view(batch_size, self.cfg.seq_len, -1)
+        res_emb = self.response_proj(res_emb)
+
+        seq_emb = torch.cat([cate_emb, cont_emb, res_emb], 2)
 
         seq_length = self.cfg.seq_len
         position_ids = torch.arange(seq_length, dtype=torch.long, device=cate_x.device)

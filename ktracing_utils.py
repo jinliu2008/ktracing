@@ -242,28 +242,6 @@ def preprocess_data(df_, settings=None, parameters=None, **kwargs):
     return df_, sample_indices, cate_offset
 
 
-def preprocess(settings=None, parameters=None, mode='train', update_flag=False, output_file=""):
-    output_file_path = os.path.join(settings["CLEAN_DATA_DIR"], output_file)
-    if os.path.isfile(output_file_path) and not update_flag:
-        return
-
-    if mode == 'train':
-        file_name = settings['TRAIN_DATASET']
-        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-        # logic to add features
-
-    if mode == 'validation':
-        file_name = settings['VALIDATION_DATASET']
-        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-    df_.sort_values(['timestamp'], ascending=True, inplace=True)
-    df_, mappers_dict, sample_indices = add_features(df_, settings, parameters, mode=mode)
-    df_, cate_offset = transform_df(df_, parameters, mappers_dict)
-    if output_file:
-        torch.save([df_, sample_indices, cate_offset], output_file_path)
-
-    return df_, sample_indices, cate_offset
-
-
 def transform_df(df_, parameters, mappers_dict):
     cate_cols = parameters['cate_cols']
     cont_cols = parameters['cont_cols']
@@ -308,11 +286,11 @@ def get_samples(df_):
     for user_idx, start_indices in df_users.items():
         curr_cnt = 0
         for num, curr_index in enumerate(start_indices):
-            if curr_index in row_id_list:
-                sample_indices.append((user_idx, curr_cnt, curr_index))
-                curr_cnt += 1
-            else:
-                assert df_.loc[curr_index, TARGET] == -1
+            # if curr_index in row_id_list:
+            sample_indices.append((user_idx, curr_cnt, curr_index))
+            curr_cnt += 1
+            # else:
+            #     assert df_.loc[curr_index, TARGET] == -1
 
     # df_lens = df_[df_.content_type_id==False].groupby('user_id').size().to_dict()
     return sample_indices
@@ -357,15 +335,16 @@ def train(train_loader, model, optimizer, epoch, scheduler):
     end = time.time()
     global_step = 0
 
-    for step, (cate_x, cont_x, mask, y) in enumerate(train_loader):
+    for step, (cate_x, cont_x, response, mask, y) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
-
-        cate_x, cont_x, mask, y = cate_x.cuda(), cont_x.cuda(), mask.cuda(), y.cuda()
+        idx = y >= 0
+        cate_x, cont_x, response, mask, y = cate_x[idx], cont_x[idx], response[idx], mask[idx], y[idx]
+        cate_x, cont_x, response, mask, y = cate_x.cuda(), cont_x.cuda(), response.cuda(), mask.cuda(), y.cuda()
         batch_size = cate_x.size(0)
 
         # compute loss
-        pred = model(cate_x, cont_x, mask)
+        pred = model(cate_x, cont_x, response, mask)
         loss = torch.nn.BCELoss()(pred, y.reshape(-1,1))
 
         # record loss
@@ -431,23 +410,27 @@ def validate(valid_loader, model):
 
     predictions = []
     ground_truth = []
-    for step, (cate_x, cont_x, mask, y) in enumerate(valid_loader):
+    for step, (cate_x, cont_x, response, mask, y) in enumerate(valid_loader):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        cate_x, cont_x, mask, y = cate_x.cuda(), cont_x.cuda(), mask.cuda(), y.cuda()
-        batch_size = cate_x.size(0)
+        idx = y >= 0
+        cate_x, cont_x, response, mask, y = cate_x[idx], cont_x[idx], response[idx], mask[idx], y[idx]
 
-        # compute loss
-        with torch.no_grad():
-            pred = model(cate_x, cont_x, mask)
-            try:
+        cate_x, cont_x, response, mask, y = cate_x.cuda(), cont_x.cuda(), response.cuda(), mask.cuda(), y.cuda()
+        batch_size = cate_x.size(0)
+        try:
+
+            # compute loss
+            with torch.no_grad():
+                pred = model(cate_x, cont_x, response, mask)
                 auc = metrics.roc_auc_score(y.detach().cpu().numpy(), pred.detach().cpu().numpy())
                 losses.update(auc, batch_size)
-            except Exception as e:
-                print('Failed: ' + str(e))
-        predictions.append(pred.detach().cpu())
-        ground_truth.append(y.cpu())
+            predictions.append(pred.detach().cpu())
+            ground_truth.append(y.cpu())
+
+        except Exception as e:
+            print('Failed: ' + str(e))
 
     predictions = torch.cat(predictions).numpy()
     ground_truths = torch.cat(ground_truth).numpy()
@@ -458,11 +441,11 @@ def validate(valid_loader, model):
 def test(valid_loader, model):
     model.eval()
     predictions = []
-    for step, (cate_x, cont_x, mask, _) in enumerate(valid_loader):
-        cate_x, cont_x, mask = cate_x.cuda(), cont_x.cuda(), mask.cuda()
+    for step, (cate_x, cont_x, response, mask, _) in enumerate(valid_loader):
+        cate_x, cont_x, response, mask = cate_x.cuda(), cont_x.cuda(), response.cuda(), mask.cuda()
 
         with torch.no_grad():
-            pred = model(cate_x, cont_x, mask)
+            pred = model(cate_x, cont_x, response, mask)
         predictions.append(pred.detach().cpu())
     predictions = torch.cat(predictions).numpy()
     return predictions

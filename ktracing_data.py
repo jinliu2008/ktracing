@@ -109,7 +109,8 @@ class KTDataset(Dataset):
         curr_array[0, target_idx] = self.start_token
 
         cate_df = curr_array[:, :len(self.cate_cols)]
-        cont_df = curr_array[:, len(self.cate_cols):]
+        cont_df = curr_array[:, len(self.cate_cols):-1]
+        response_df = curr_array[:,-1:]
         target_df = curr_row[-1, -1]
 
         # prepare cate
@@ -119,8 +120,13 @@ class KTDataset(Dataset):
         cate_x[-len_:,:] = tmp_cate_x[-len_:,:]
 
         tmp_cont_x = torch.FloatTensor(cont_df.astype(float))
-        cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)+1).zero_()
+        cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)).zero_()
         cont_x[-len_:,:] = tmp_cont_x[-len_:,:]
+
+        tmp_response = torch.LongTensor(response_df.astype(float))
+        response = torch.LongTensor(self.seq_len, 1).zero_()
+        response[-len_:,:] = tmp_response[-len_:,:]
+        response[response < 0] = 3
 
         mask = torch.ByteTensor(self.seq_len).zero_()
         mask[-len_:] = 1
@@ -130,7 +136,7 @@ class KTDataset(Dataset):
         else:
             target = 0
 
-        return cate_x, cont_x, mask, target
+        return cate_x, cont_x, response, mask, target
 
     def __len__(self):
         return len(self.sample_indices)
