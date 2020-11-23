@@ -42,7 +42,8 @@ def update_user_feats(df, answered_correctly_sum_u_dict, count_u_dict):
 
 
 class KTDataset(Dataset):
-    def __init__(self, cfg, df, sample_indices, columns, user_dict={}, aug=0.0, aug_p=0.5, prior_df=None):
+    def __init__(self, cfg, df, sample_indices, columns, user_dict={}, aug=0.0, aug_p=0.5
+                 , prior_df=None, submission=False):
         self.cfg = cfg
         self.df = df
 
@@ -57,11 +58,13 @@ class KTDataset(Dataset):
         self.start_token = 2
         self.columns = columns
         self.prior_df = prior_df
-        self.submission = False
+        self.submission = submission
         if isinstance(prior_df, pd.DataFrame):
-            self.submission = True
+            assert self.submission == True
             # update dict
             for user_id, u in prior_df.groupby('user_id'):
+                if user_id == 275030867:
+                    print(user_id)
                 curr_row = u[self.columns]
                 if user_id not in self.user_dict:
                     curr_array = curr_row.copy()
@@ -76,9 +79,10 @@ class KTDataset(Dataset):
                     self.user_dict[user_id] = curr_array.copy()
 
     def __getitem__(self, idx):
-
+        # 275030867
         user_id, user_idx, index = self.sample_indices[idx]
-
+        if user_id == 275030867:
+            print(user_id)
         if self.aug > 0:
             if len_ > 50:
                 if np.random.binomial(1, self.aug_p) == 1:
@@ -89,6 +93,7 @@ class KTDataset(Dataset):
 
         curr_row = np.array(self.df[index,:]).reshape(1,-1)
         target_idx = self.columns.index(TARGET)
+
         if user_id not in self.user_dict:
             curr_array = curr_row.copy()
         else:

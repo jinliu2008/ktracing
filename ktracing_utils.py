@@ -488,7 +488,8 @@ def get_dataloader(df_, settings, parameters, CFG, **kwargs):
     CFG.total_cate_size = cate_offset
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
                          CFG.features, user_dict=kwargs.get('user_dict', {}),
-                         aug=kwargs.get('aug', CFG.aug), prior_df=kwargs.get('prior_df', None))
+                         aug=kwargs.get('aug', CFG.aug),
+                         prior_df=kwargs.get('prior_df', None), submission=kwargs.get('submission', False))
 
     train_loader = DataLoader(
         train_db, batch_size=CFG.batch_size, shuffle=False,

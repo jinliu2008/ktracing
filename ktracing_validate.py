@@ -23,18 +23,18 @@ def main():
     torch.cuda.manual_seed(CFG.seed)
 
     torch.backends.cudnn.deterministic = True
-    for epoch in range(5):
+    for epoch in range(10):
         model_file_name = \
-            f'b-128_a-TRANSFORMER_e-20_h-20_d-0.2_l-2_hd-10_s-123_len-20_aug-0.0_da-trainsamplev1_epoch-{epoch}.pt'
+            f'b-128_a-TRANSFORMER_e-20_h-20_d-0.2_l-2_hd-10_s-123_len-20_aug-0.0_da-trainsamplev0_epoch-{epoch}.pt'
         CFG.batch_size = 128
         CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
-
-        user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
-        settings['VALIDATION_DATASET'] = 'validation_sample_v1.feather'
-        file_name = settings['VALIDATION_DATASET']
-        valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-                       model_name=model_file_name, user_dict=user_dict)
+        #
+        # user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
+        # settings['VALIDATION_DATASET'] = 'validation_sample_v1.feather'
+        # file_name = settings['VALIDATION_DATASET']
+        # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
+        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
+        #                model_name=model_file_name, user_dict=user_dict)
 
         user_dict = get_user_dict(settings, parameters=parameters, submission_flag=True)
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))

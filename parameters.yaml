@@ -1,5 +1,5 @@
 cate_cols: ['content_id', 'part', "task_container_id" ]
-cont_cols: ["answered_correctly_content", 'prior_question_elapsed_time', 'prior_question_had_explanation', 'timestamp']
+cont_cols: ["answered_correctly_content", 'prior_question_elapsed_time', 'prior_question_had_explanation']
 
 learning_rate: 1.0e-3
 batch_size: 128
