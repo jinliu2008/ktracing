@@ -115,19 +115,24 @@ class KTDataset(Dataset):
 
         cate_df = curr_array[:, :len(self.cate_cols)]
 
-        #prior elaspse time
-        if 'prior_question_elapsed_time' in self.columns:
-            elpase_time_idx = self.columns.index('prior_question_elapsed_time')
-            curr_array[:, elpase_time_idx] = curr_array[:, elpase_time_idx]/300e3
+        # #prior elaspse time
+        # if 'prior_question_elapsed_time' in self.columns:
+        #     elpase_time_idx = self.columns.index('prior_question_elapsed_time')
+        #     curr_array[:, elpase_time_idx] = curr_array[:, elpase_time_idx]/300e3
+
         boolean_idx = []
         if 'prior_question_had_explanation' in self.columns:
             had_explanation_idx = self.columns.index('prior_question_had_explanation')
             boolean_idx.append(had_explanation_idx)
-
-        if 'timestamp' in self.columns:
-            timestamp_idx = self.columns.index('timestamp')
-            curr_array[1:, timestamp_idx] = np.clip(np.diff(curr_array[:, timestamp_idx])/300e3, 0, 10)
-            curr_array[0, timestamp_idx] = 0
+        #
+        # if 'timestamp' in self.columns:
+        #     timestamp_idx = self.columns.index('timestamp')
+        #     curr_array[1:, timestamp_idx] = np.clip(np.diff(curr_array[:, timestamp_idx])/300e3, 0, 1)
+        #     if len(curr_array)>5:
+        #         curr_array = curr_array[1:,:].copy()
+        #         len_ -= 1
+        #     else:
+        #         curr_array[0, timestamp_idx] = 0
 
         cols = len(self.columns)
         cont_df = curr_array[:, len(self.cate_cols):-1].copy()

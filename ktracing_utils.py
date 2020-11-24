@@ -207,11 +207,22 @@ def update_record(results_u, uid, record):
 
 
 def feature_engineering(df_):
-    df_.loc[:, 'lagged_time'] = df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 1e3
-    df_.loc[:, 'prior_question_elapsed_time'] = df_.loc[:, 'prior_question_elapsed_time'] / 1e3
-    lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=0)
-    df_.loc[:, 'sum_y'] = df_.groupby('user_id')['user_id'].cumcount()
-    df_.loc[:, 'rolling_avg_lagged_y'] = lagged_y.cumsum() / (1+df_.loc[:, 'sum_y'])
+    df_.loc[:, 'lagged_time'] = (df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 300e3).clip(upper=1)
+    df_.loc[:, 'prior_question_elapsed_time'] = (df_.loc[:, 'prior_question_elapsed_time'] / 300e3).clip(upper=1)
+
+    # prior_question_elapsed_time_mean = df_.prior_question_elapsed_time.dropna().values.mean()
+    # lagged_time_mean = df_.lagged_time.dropna().values.mean()
+    # print(prior_question_elapsed_time_mean, lagged_time_mean)
+    prior_question_elapsed_time_mean = 0.091806516
+    lagged_time_mean = 0.22981916761559054
+    # print(prior_question_elapsed_time_mean, lagged_time_mean)
+    # 0.091806516 0.22981916761559054
+
+    df_['prior_question_elapsed_time'] = df_.prior_question_elapsed_time.fillna(prior_question_elapsed_time_mean)
+    df_['lagged_time'] = df_.lagged_time.fillna(lagged_time_mean)
+    # lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=0)
+    # df_.loc[:, 'sum_y'] = df_.groupby('user_id')['user_id'].cumcount()
+    # df_.loc[:, 'rolling_avg_lagged_y'] = lagged_y.cumsum() / (1+df_.loc[:, 'sum_y'])
     return df_
 
 
@@ -226,7 +237,7 @@ def  add_new_features(df_, settings, parameters, **kwargs):
     df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
 
-    # df_ = feature_engineering(df_)
+    df_ = feature_engineering(df_)
 
     return df_, mappers_dict, sample_indices
 
@@ -295,24 +306,6 @@ def get_samples(df_):
             #     assert df_.loc[curr_index, TARGET] == -1
 
     # df_lens = df_[df_.content_type_id==False].groupby('user_id').size().to_dict()
-    return sample_indices
-
-
-# generate train sample indices
-def get_sample_indices(df_, results_u=None):
-    # df_.set_index('row_id', inplace=True)
-    # df_.set_index('row_id', inplace=True)
-    row_id_list = df_[df_.content_type_id==False].index
-    sample_indices = []
-    df_users = df_.groupby('user_id').groups
-    for user_idx, start_indices in df_users.items():
-        if isinstance(results_u, dict) and user_idx in results_u:
-            start_idx = len(results_u[user_idx])
-        else:
-            start_idx = 0
-        for num, curr_index in enumerate(start_indices):
-            if (curr_index in row_id_list) and (num >= start_idx):
-                sample_indices.append((user_idx, num))
     return sample_indices
 
 
@@ -533,8 +526,6 @@ def run_test(valid_loader, settings=None, CFG=None, model_name=""):
 
     prediction = test(valid_loader, model)
     return prediction
-
-
 
 
 def save_checkpoint(state, model_path, model_filename, is_best=False):
