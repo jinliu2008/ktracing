@@ -63,13 +63,17 @@ class KTDataset(Dataset):
             assert self.submission == True
             # update dict
             for user_id, u in prior_df.groupby('user_id'):
-                if user_id == 275030867:
-                    print(user_id)
-                curr_row = u[self.columns]
+                curr_row = u[self.columns].values
                 if user_id not in self.user_dict:
                     curr_array = curr_row.copy()
                 else:
                     user_hist = self.user_dict[user_id]
+
+                    if "user_count" in self.columns:
+                        user_count_idx = self.columns.index('user_count')
+                        last_value = user_hist[-1, user_count_idx]+1
+                        curr_row[:,user_count_idx] += last_value
+
                     curr_array = np.concatenate((user_hist, curr_row), axis=0)
 
                 # update dict
@@ -81,8 +85,6 @@ class KTDataset(Dataset):
     def __getitem__(self, idx):
         # 275030867
         user_id, user_idx, index = self.sample_indices[idx]
-        if user_id == 275030867:
-            print(user_id)
         if self.aug > 0:
             if len_ > 50:
                 if np.random.binomial(1, self.aug_p) == 1:
@@ -98,6 +100,11 @@ class KTDataset(Dataset):
             curr_array = curr_row.copy()
         else:
             user_hist = self.user_dict[user_id]
+
+            if "user_count" in self.columns:
+                user_count_idx = self.columns.index('user_count')
+                curr_row[0, user_count_idx] = user_hist[-1, user_count_idx] + 1
+
             curr_array = np.concatenate((user_hist, curr_row), axis=0)
 
         # update dict
@@ -124,6 +131,7 @@ class KTDataset(Dataset):
         if 'prior_question_had_explanation' in self.columns:
             had_explanation_idx = self.columns.index('prior_question_had_explanation')
             boolean_idx.append(had_explanation_idx)
+
         #
         # if 'timestamp' in self.columns:
         #     timestamp_idx = self.columns.index('timestamp')
@@ -136,6 +144,12 @@ class KTDataset(Dataset):
 
         cols = len(self.columns)
         cont_df = curr_array[:, len(self.cate_cols):-1].copy()
+
+
+        if "user_count" in self.columns:
+            user_count_idx = self.columns.index('user_count')-len(self.cate_cols)
+            cont_df[:, user_count_idx] = np.clip(cont_df[:, user_count_idx]/1e3, 0, 1)
+
         for c in range(len(self.cate_cols), cols-1):
             if c in boolean_idx:
                 continue

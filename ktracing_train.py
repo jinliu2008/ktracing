@@ -67,7 +67,10 @@ def main():
 
     CFG.input_filename = file_name
 
-    for epoch in range(CFG.start_epoch, CFG.num_train_epochs):
+    # for epoch in range(CFG.start_epoch, CFG.num_train_epochs):
+
+    for epoch in range(CFG.start_epoch, 20):
+
         model_file_name = generate_file_name(CFG)
         model_file_name = f"{model_file_name}_epoch-{epoch}.pt"
         print('model file name:', model_file_name)
@@ -91,17 +94,14 @@ def main():
             settings['MODEL_DIR'], model_file_name,
         )
 
-
-        user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
-        print(f'epoch:{epoch} validation user len:', len(user_dict))
-
-        valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], settings['VALIDATION_DATASET']))
-        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-                       model_name=model_file_name, user_dict=user_dict)
+        # user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
+        #
+        # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], settings['VALIDATION_DATASET']))
+        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
+        #                model_name=model_file_name, user_dict=user_dict)
 
         user_dict = get_user_dict(settings, parameters=parameters, submission_flag=True)
         print(f'epoch:{epoch} submission user len:', len(user_dict))
-
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
         #
         df_sample[TARGET] = 0.5

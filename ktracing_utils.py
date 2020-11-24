@@ -220,8 +220,9 @@ def feature_engineering(df_):
 
     df_['prior_question_elapsed_time'] = df_.prior_question_elapsed_time.fillna(prior_question_elapsed_time_mean)
     df_['lagged_time'] = df_.lagged_time.fillna(lagged_time_mean)
+
+    df_['user_count'] = df_.groupby(['user_id']).cumcount()
     # lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=0)
-    # df_.loc[:, 'sum_y'] = df_.groupby('user_id')['user_id'].cumcount()
     # df_.loc[:, 'rolling_avg_lagged_y'] = lagged_y.cumsum() / (1+df_.loc[:, 'sum_y'])
     return df_
 
@@ -491,7 +492,7 @@ def update_params(CFG, parameters):
         setattr(CFG, key, value)
     return CFG
 
-def run_validation(df_, settings=None, parameters=None, CFG=None, model_name="", user_dict={}):
+def run_validation(df_, settings, parameters, CFG, model_name="", user_dict={}):
 
     CFG = parse_model_name(CFG, model_name)
 
@@ -502,6 +503,7 @@ def run_validation(df_, settings=None, parameters=None, CFG=None, model_name="",
     auc_score, prediction, groundtruth = validate(valid_loader, model)
     auc = metrics.roc_auc_score(groundtruth, prediction)
     print('Validation AUC loss: ', auc)
+    return prediction, groundtruth
 
 
 def run_submission(test_batch, settings, parameters, CFG, model_name, **kwargs):
