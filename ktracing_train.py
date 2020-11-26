@@ -37,7 +37,10 @@ def main():
     logging.info(f'CFG: {CFG.__dict__}')
     file_name = settings['TRAIN_DATASET']
     df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-    train_loader, _, sample_size = get_dataloader(df_, settings, parameters, CFG, user_dict={})
+    df_.sort_values(['row_id'], ascending=True, inplace=True)
+    df_.reset_index(inplace=True)
+
+    train_loader, _, sample_size = get_dataloader(df_, settings, CFG, user_dict={})
     model = encoders[CFG.encoder](CFG)
     model.cuda()
     model._dropout = CFG.dropout
@@ -67,9 +70,7 @@ def main():
 
     CFG.input_filename = file_name
 
-    # for epoch in range(CFG.start_epoch, CFG.num_train_epochs):
-
-    for epoch in range(CFG.start_epoch, 20):
+    for epoch in range(CFG.start_epoch, CFG.num_train_epochs):
 
         model_file_name = generate_file_name(CFG)
         model_file_name = f"{model_file_name}_epoch-{epoch}.pt"
@@ -94,17 +95,17 @@ def main():
             settings['MODEL_DIR'], model_file_name,
         )
 
-        # user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
-        #
+        # user_dict = get_user_dict(settings, CFG, submission_flag=False)
         # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], settings['VALIDATION_DATASET']))
-        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-        #                model_name=model_file_name, user_dict=user_dict)
+        # valid_df.sort_values(['row_id'], ascending=True, inplace=True)
+        # valid_df.reset_index(inplace=True)
+        # run_validation(valid_df, settings, CFG, model_name=model_file_name, user_dict=user_dict)
 
-        user_dict = get_user_dict(settings, parameters=parameters, submission_flag=True)
+        user_dict = get_user_dict(settings, CFG, submission_flag=True)
         print(f'epoch:{epoch} submission user len:', len(user_dict))
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
         #
-        df_sample[TARGET] = 0.5
+        df_sample[TARGET] = df_sample['content_type_id']
         sample_batch = []
 
         # batch 1
@@ -117,11 +118,12 @@ def main():
         sample_batch.append(df_sample.iloc[71:])
 
         df_batch_prior = None
-        i = 0
         answers_all = []
         predictions_all = []
         for test_batch in sample_batch:
-            i += 1
+
+            test_batch.reset_index(inplace=True)
+
             # update state
             if df_batch_prior is not None:
                 answers = eval(test_batch['prior_group_answers_correct'].iloc[0])
@@ -129,8 +131,9 @@ def main():
                 answers_all += answers.copy()
                 predictions_all += [p[0] for p in predictions.tolist()]
 
-            predictions, df_batch_prior = run_submission(test_batch, settings, parameters, CFG, model_file_name,
+            predictions, df_batch_prior = run_submission(test_batch, settings, CFG, model_file_name,
                            user_dict=user_dict, prior_df=df_batch_prior)
+
             # get state
             df_batch = test_batch[test_batch.content_type_id == 0]
             df_batch['answered_correctly'] = predictions

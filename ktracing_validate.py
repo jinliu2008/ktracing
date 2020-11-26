@@ -23,50 +23,55 @@ def main():
     torch.cuda.manual_seed(CFG.seed)
 
     torch.backends.cudnn.deterministic = True
-    for epoch in range(10):
+    for epoch in range(3):
         model_file_name = \
-            f'b-128_a-TRANSFORMER_e-20_h-20_d-0.2_l-2_hd-10_s-123_len-20_aug-0.0_da-trainsamplev1_epoch-{epoch}.pt'
+            f'b-128_a-GPT2_e-20_h-20_d-0.2_l-2_hd-10_s-123_len-20_aug-0.0_da-trainsamplev1_epoch-{epoch}.pt'
         CFG.batch_size = 128
         CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
         #
-        # user_dict = get_user_dict(settings, parameters=parameters, submission_flag=False)
+        # user_dict = get_user_dict(settings, CFG, submission_flag=False)
         # settings['VALIDATION_DATASET'] = 'validation_sample_v1.feather'
         # file_name = settings['VALIDATION_DATASET']
         # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
-        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-        #                model_name=model_file_name, user_dict=user_dict)
+        # run_validation(valid_df, settings=settings, CFG, model_name=model_file_name, user_dict=user_dict)
 
-        user_dict = get_user_dict(settings, parameters=parameters, submission_flag=True)
+        user_dict = get_user_dict(settings, CFG, submission_flag=True)
+        from sys import getsizeof
+        print('curr dict:', getsizeof(user_dict))
+
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
-        #
-        df_sample[TARGET] = 0.5
-        sample_batch = []
+        df_sample[TARGET] = df_sample['content_type_id']
 
+        sample_batch = []
         # batch 1
         sample_batch.append(df_sample.iloc[:18])
         # batch 2
         sample_batch.append(df_sample.iloc[18:45])
-        # batch 3
+        # batch 3rr
         sample_batch.append(df_sample.iloc[45:71])
         # batch 4
-        sample_batch.append(df_sample.iloc[71:])
+        # sample_batch.append(df_sample.iloc[71:])
 
         df_batch_prior = None
-        i = 0
+
         answers_all = []
         predictions_all = []
-        for test_batch in sample_batch:
-            i += 1
+        for i, test_batch in enumerate(sample_batch):
             # update state
+            test_batch.reset_index(inplace=True)
+
             if df_batch_prior is not None:
                 answers = eval(test_batch['prior_group_answers_correct'].iloc[0])
                 df_batch_prior['answered_correctly'] = answers
                 answers_all += answers.copy()
-                predictions_all += [p[0] for p in predictions.tolist()]
+                curr_preds = [p[0] for p in predictions.tolist()]
+                predictions_all += curr_preds
+                print(f'current sample auc: {i}',  metrics.roc_auc_score(answers, curr_preds))
 
-            predictions, df_batch_prior = run_submission(test_batch, settings, parameters, CFG, model_file_name,
+            predictions, df_batch_prior = run_submission(test_batch, settings, CFG, model_file_name,
                                                          user_dict=user_dict, prior_df=df_batch_prior)
-
+            df_batch_prior_copy = df_batch_prior.copy()
+            test_batch_copy = test_batch.copy()
             # get state
             df_batch = test_batch[test_batch.content_type_id == 0]
             df_batch['answered_correctly'] = predictions

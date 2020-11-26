@@ -173,11 +173,156 @@ class LSTMModel(nn.Module):
         return torch.sigmoid(pred_y)
 
 
+class DSB_BertModel(nn.Module):
+    def __init__(self, cfg):
+        super(DSB_BertModel, self).__init__()
+        self.cfg = cfg
+        cate_col_size = len(cfg.cate_cols)
+        cont_col_size = len(cfg.cont_cols)
+
+        self.cate_emb = nn.Embedding(cfg.total_cate_size, cfg.emb_size, padding_idx=0)
+        # self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)
+
+        # self.position_emb_nn = nn.Embedding(cfg.emb_size, cfg.hidden_size)
+        self.cate_proj = nn.Sequential(
+            nn.Linear(cfg.emb_size * cate_col_size, cfg.hidden_size // 2 - 1),
+            nn.LayerNorm(cfg.hidden_size // 2 - 1),
+        )
+
+        self.cont_emb = nn.Sequential(
+            nn.Linear(cont_col_size, cfg.hidden_size // 2 - 1),
+            nn.LayerNorm(cfg.hidden_size // 2 - 1),
+        )
+
+        self.response_emb = nn.Embedding(4, 2, padding_idx=0)
+        self.response_proj = nn.Sequential(
+            nn.Linear(2, 2),
+            nn.LayerNorm(2),
+        )
+
+        self.config = BertConfig(
+            3,  # not used
+            hidden_size=cfg.hidden_size,
+            num_hidden_layers=cfg.nlayers,
+            num_attention_heads=cfg.nheads,
+            intermediate_size=cfg.hidden_size,
+            hidden_dropout_prob=cfg.dropout,
+            attention_probs_dropout_prob=cfg.dropout,
+        )
+        self.encoder = BertModel(self.config)
+
+        def get_reg():
+            return nn.Sequential(
+                nn.Linear(cfg.hidden_size, cfg.hidden_size),
+                nn.LayerNorm(cfg.hidden_size),
+                nn.Dropout(cfg.dropout),
+                nn.ReLU(),
+                nn.Linear(cfg.hidden_size, cfg.target_size),
+            )
+
+        self.reg_layer = get_reg()
+
+
+    def forward(self, cate_x, cont_x, response, mask):
+        batch_size = cate_x.size(0)
+
+        # cate_x = self.cate_pos_encoder(cate_x)
+        cate_emb = self.cate_emb(cate_x).view(batch_size, self.cfg.seq_len, -1)
+        cate_emb = self.cate_proj(cate_emb)
+
+        # cont_x = self.cont_pos_encoder(cont_x)
+        cont_emb = self.cont_emb(cont_x)
+
+        res_emb = self.response_emb(response).view(batch_size, self.cfg.seq_len, -1)
+        res_emb = self.response_proj(res_emb)
+
+        seq_emb = torch.cat([cate_emb, cont_emb, res_emb], 2)
+
+        encoded_layers = self.encoder(inputs_embeds=seq_emb, attention_mask=mask)
+        sequence_output = encoded_layers[0]
+        sequence_output = sequence_output[:, -1]
+
+        pred_y = self.reg_layer(sequence_output)
+        return torch.sigmoid(pred_y)
+
+
+class DSB_GPT2Model(nn.Module):
+    def __init__(self, cfg):
+        super(DSB_GPT2Model, self).__init__()
+        self.cfg = cfg
+        cate_col_size = len(cfg.cate_cols)
+        cont_col_size = len(cfg.cont_cols)
+
+        self.cate_emb = nn.Embedding(cfg.total_cate_size, cfg.emb_size, padding_idx=0)
+        # self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)
+
+        # self.position_emb_nn = nn.Embedding(cfg.emb_size, cfg.hidden_size)
+        self.cate_proj = nn.Sequential(
+            nn.Linear(cfg.emb_size * cate_col_size, cfg.hidden_size // 2 - 1),
+            nn.LayerNorm(cfg.hidden_size // 2 - 1),
+        )
+
+        self.cont_emb = nn.Sequential(
+            nn.Linear(cont_col_size, cfg.hidden_size // 2 - 1),
+            nn.LayerNorm(cfg.hidden_size // 2 - 1),
+        )
+
+        self.response_emb = nn.Embedding(4, 2, padding_idx=0)
+        self.response_proj = nn.Sequential(
+            nn.Linear(2, 2),
+            nn.LayerNorm(2),
+        )
+
+        self.config = GPT2Config(
+            3,  # not used
+            n_positions=cfg.seq_len,
+            n_ctx=cfg.hidden_size,
+            n_embd=cfg.hidden_size,
+            n_layer=cfg.nlayers,
+            n_head=cfg.nheads,
+            # embd_pdrop=cfg.dropout,
+            # attn_pdrop=cfg.dropout,
+        )
+        self.encoder = GPT2Model(self.config)
+
+        def get_reg():
+            return nn.Sequential(
+                nn.Linear(cfg.hidden_size, cfg.hidden_size),
+                nn.LayerNorm(cfg.hidden_size),
+                nn.Dropout(cfg.dropout),
+                nn.ReLU(),
+                nn.Linear(cfg.hidden_size, cfg.target_size),
+            )
+
+        self.reg_layer = get_reg()
+
+    def forward(self, cate_x, cont_x, response, mask):
+        batch_size = cate_x.size(0)
+
+        # cate_x = self.cate_pos_encoder(cate_x)
+        cate_emb = self.cate_emb(cate_x).view(batch_size, self.cfg.seq_len, -1)
+        cate_emb = self.cate_proj(cate_emb)
+
+        # cont_x = self.cont_pos_encoder(cont_x)
+        cont_emb = self.cont_emb(cont_x)
+
+        res_emb = self.response_emb(response).view(batch_size, self.cfg.seq_len, -1)
+        res_emb = self.response_proj(res_emb)
+
+        seq_emb = torch.cat([cate_emb, cont_emb, res_emb], 2)
+
+        encoded_layers = self.encoder(inputs_embeds=seq_emb, attention_mask=mask)
+        sequence_output = encoded_layers[0]
+        sequence_output = sequence_output[:, -1]
+
+        pred_y = self.reg_layer(sequence_output)
+        return torch.sigmoid(pred_y)
+
 encoders = {
     'LSTM': LSTMModel,
     'TRANSFORMER': TransfomerModel,
-    # 'BERT': DSB_BertModel,
-    # 'GPT2': DSB_GPT2Model,
+    'BERT': DSB_BertModel,
+    'GPT2': DSB_GPT2Model,
     # 'ALBERT': DSB_ALBERTModel,
     # 'XLNET': DSB_XLNetModel,
     # 'XLM': DSB_XLMModel,

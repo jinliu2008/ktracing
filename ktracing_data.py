@@ -40,6 +40,11 @@ def update_user_feats(df, answered_correctly_sum_u_dict, count_u_dict):
             answered_correctly_sum_u_dict[row[0]] += row[1]
             count_u_dict[row[0]] += 1
 
+def fill_zeros_with_last(arr):
+    prev = np.arange(len(arr))
+    prev[arr == 0] = 0
+    prev = np.maximum.accumulate(prev)
+    return arr[prev]
 
 class KTDataset(Dataset):
     def __init__(self, cfg, df, sample_indices, columns, user_dict={}, aug=0.0, aug_p=0.5
@@ -85,6 +90,7 @@ class KTDataset(Dataset):
     def __getitem__(self, idx):
         # 275030867
         user_id, user_idx, index = self.sample_indices[idx]
+
         if self.aug > 0:
             if len_ > 50:
                 if np.random.binomial(1, self.aug_p) == 1:
@@ -94,7 +100,6 @@ class KTDataset(Dataset):
                     len_ = max(int(len_ * cut_ratio), 30)
 
         curr_row = np.array(self.df[index,:]).reshape(1,-1)
-        target_idx = self.columns.index(TARGET)
 
         if user_id not in self.user_dict:
             curr_array = curr_row.copy()
@@ -114,37 +119,36 @@ class KTDataset(Dataset):
             else:
                 self.user_dict[user_id] = curr_array.copy()
 
-        curr_array[:, target_idx] = np.roll(curr_array[:, target_idx], 1)
+        target_idx = self.columns.index(TARGET)
+        # curr_array[:, target_idx] = np.roll(curr_array[:, target_idx], 1)
 
         len_ = min(self.seq_len, curr_array.shape[0])
         curr_array =curr_array[-len_:,:]
-        curr_array[0, target_idx] = self.start_token
+
+        curr_array[-1, target_idx] = self.start_token
 
         cate_df = curr_array[:, :len(self.cate_cols)]
 
-        # #prior elaspse time
-        # if 'prior_question_elapsed_time' in self.columns:
-        #     elpase_time_idx = self.columns.index('prior_question_elapsed_time')
-        #     curr_array[:, elpase_time_idx] = curr_array[:, elpase_time_idx]/300e3
+        #prior elaspse time
+        if 'prior_question_elapsed_time' in self.columns:
+            elpase_time_idx = self.columns.index('prior_question_elapsed_time')
+            curr_array[:, elpase_time_idx] = np.clip(curr_array[:, elpase_time_idx]/300e3, 0, 1)
+            # curr_array[0, elpase_time_idx] = 0.091806516
 
         boolean_idx = []
+
         if 'prior_question_had_explanation' in self.columns:
             had_explanation_idx = self.columns.index('prior_question_had_explanation')
             boolean_idx.append(had_explanation_idx)
 
-        #
-        # if 'timestamp' in self.columns:
-        #     timestamp_idx = self.columns.index('timestamp')
-        #     curr_array[1:, timestamp_idx] = np.clip(np.diff(curr_array[:, timestamp_idx])/300e3, 0, 1)
-        #     if len(curr_array)>5:
-        #         curr_array = curr_array[1:,:].copy()
-        #         len_ -= 1
-        #     else:
-        #         curr_array[0, timestamp_idx] = 0
+        if 'timestamp' in self.columns:
+            timestamp_idx = self.columns.index('timestamp')
+            curr_array[1:, timestamp_idx] = \
+                fill_zeros_with_last(np.clip(np.diff(curr_array[:, timestamp_idx])/300e3, 0, 1))
+            curr_array[0, timestamp_idx] = 0.22981916761559054
 
         cols = len(self.columns)
         cont_df = curr_array[:, len(self.cate_cols):-1].copy()
-
 
         if "user_count" in self.columns:
             user_count_idx = self.columns.index('user_count')-len(self.cate_cols)

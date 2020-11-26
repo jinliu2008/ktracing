@@ -3,7 +3,7 @@
     "CLEAN_DATA_DIR": "./input/processed",
     "MODEL_DIR": "./models/",
     "LOGS_DIR": "./logs",
-    "SUBMISSION_DIR": "./submissions/",
+    "SUBMISSION_DIR": "./input/processed/submission",
     "TOKEN_DIR": "../ktracing_gcs.json",
     "TRAIN_DATASET": "train_sample_v1.feather",
     "TRAIN_PT": "train_sample_v1.pt",

@@ -101,16 +101,16 @@ def get_questions_df(settings):
     return questions_df
 
 
-def generate_files(settings=None, parameters=None, submission=False):
+def generate_files(settings, CFG, submission=False):
     if submission:
         input_file_name = 'train.feather'
-        file_path = os.path.join(settings["CLEAN_DATA_DIR"], 'submission')
+        file_path = settings["SUBMISSION_DIR"]
     else:
         input_file_name = 'train_v0.feather'
         file_path = settings["CLEAN_DATA_DIR"]
 
     questions_df = get_questions_df(settings)
-    cate_cols = parameters['cate_cols']
+    cate_cols = CFG.cate_cols
 
     mappers_dict_path = os.path.join(file_path, 'mappers_dict.pkl')
     if not os.path.isfile(mappers_dict_path):
@@ -168,10 +168,10 @@ def build_conn(df_users_content, chunk_size=20000):
     return conn
 
 
-def get_user_dict(settings, parameters=None, submission_flag=True):
+def get_user_dict(settings, CFG, submission_flag=True):
 
     if submission_flag:
-        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'submission', 'user_dict.pkl')
+        results_u_path = os.path.join(settings["SUBMISSION_DIR"], 'user_dict.pkl')
     else:
         results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
 
@@ -182,10 +182,11 @@ def get_user_dict(settings, parameters=None, submission_flag=True):
             input_file_name = "train_v0.feather"
 
         df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
+        print('columns:', df_.columns.to_list())
         df_.sort_values(['timestamp'], ascending=True, inplace=True)
-        df_ = df_.groupby('user_id').tail(CFG.window_size)
-        df_, _, _ = preprocess_data(df_, parameters=parameters, settings=settings)
 
+        df_ = df_.groupby('user_id').tail(CFG.window_size)
+        df_, _, _ = preprocess_data(df_, settings, CFG)
         df_ = df_[['user_id'] + CFG.features]
         user_dict = {uid: u.values[:, 1:] for uid, u in df_.groupby('user_id')}
         with open(results_u_path, 'wb') as handle:
@@ -207,12 +208,18 @@ def update_record(results_u, uid, record):
 
 
 def feature_engineering(df_):
+
+    #CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
+
     df_.loc[:, 'lagged_time'] = (df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 300e3).clip(upper=1)
     df_.loc[:, 'prior_question_elapsed_time'] = (df_.loc[:, 'prior_question_elapsed_time'] / 300e3).clip(upper=1)
-
+    # import feather
+    # df_ = feather.read_dataframe('./input/raw/train.feather')
     # prior_question_elapsed_time_mean = df_.prior_question_elapsed_time.dropna().values.mean()
     # lagged_time_mean = df_.lagged_time.dropna().values.mean()
     # print(prior_question_elapsed_time_mean, lagged_time_mean)
+    # del df_
+    # gc.collect()
     prior_question_elapsed_time_mean = 0.091806516
     lagged_time_mean = 0.22981916761559054
     # print(prior_question_elapsed_time_mean, lagged_time_mean)
@@ -227,8 +234,8 @@ def feature_engineering(df_):
     return df_
 
 
-def  add_new_features(df_, settings, parameters, **kwargs):
-    questions_df, mappers_dict, results_c = generate_files(settings=settings, parameters=parameters, **kwargs)
+def  add_new_features(df_, settings, CFG, **kwargs):
+    questions_df, mappers_dict, results_c = generate_files(settings, CFG, **kwargs)
 
     sample_indices = get_samples(df_)
 
@@ -238,27 +245,27 @@ def  add_new_features(df_, settings, parameters, **kwargs):
     df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
 
-    df_ = feature_engineering(df_)
+    # df_ = feature_engineering(df_)
 
     return df_, mappers_dict, sample_indices
 
-def preprocess_data(df_, settings=None, parameters=None, **kwargs):
+def preprocess_data(df_, settings, CFG, **kwargs):
 
-    CFG.cate_cols = parameters['cate_cols']
-    CFG.cont_cols = parameters['cont_cols']
+    CFG.cate_cols = CFG.cate_cols
+    CFG.cont_cols = CFG.cont_cols
 
-    df_.sort_values(['timestamp'], ascending=True, inplace=True)
-    df_.reset_index(inplace=True)
+    # df_.sort_values(['timestamp'], ascending=True, inplace=True)
+    # df_.reset_index(inplace=True)
 
-    df_, mappers_dict, sample_indices = add_new_features(df_, settings, parameters, **kwargs)
-    df_, cate_offset = transform_df(df_, parameters, mappers_dict)
+    df_, mappers_dict, sample_indices = add_new_features(df_, settings, CFG, **kwargs)
+    df_, cate_offset = transform_df(df_, CFG, mappers_dict)
 
     return df_, sample_indices, cate_offset
 
 
-def transform_df(df_, parameters, mappers_dict):
-    cate_cols = parameters['cate_cols']
-    cont_cols = parameters['cont_cols']
+def transform_df(df_, CFG, mappers_dict):
+    cate_cols = CFG.cate_cols
+    cont_cols = CFG.cont_cols
 
     cate_offset = 1
     for col in cate_cols:
@@ -434,11 +441,17 @@ def validate(valid_loader, model):
 def test(valid_loader, model):
     model.eval()
     predictions = []
-    for step, (cate_x, cont_x, response, mask, _) in enumerate(valid_loader):
+    for step, (cate_x, cont_x, response, mask, y) in enumerate(valid_loader):
+
+        idx = (y == 0)
+
+        cate_x, cont_x, response, mask = cate_x[idx], cont_x[idx], response[idx], mask[idx]
+
         cate_x, cont_x, response, mask = cate_x.cuda(), cont_x.cuda(), response.cuda(), mask.cuda()
 
         with torch.no_grad():
             pred = model(cate_x, cont_x, response, mask)
+
         predictions.append(pred.detach().cpu())
     predictions = torch.cat(predictions).numpy()
     return predictions
@@ -461,7 +474,7 @@ def load_model(settings, CFG, model_name):
     model = encoders[CFG.encoder](CFG)
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint['state_dict'])
-    print("=> loaded checkpoint '{}' (epoch {})".format(model_path, checkpoint['epoch']))
+    # print("=> loaded checkpoint '{}' (epoch {})".format(model_path, checkpoint['epoch']))
     model.cuda()
     return model
 
@@ -472,9 +485,9 @@ def get_lr():
     return scheduler.get_lr()[0]
 
 
-def get_dataloader(df_, settings, parameters, CFG, **kwargs):
+def get_dataloader(df_, settings, CFG, **kwargs):
     train_df, train_samples, cate_offset = \
-        preprocess_data(df_, settings=settings, parameters=parameters, submission=kwargs.get('submission', False))
+        preprocess_data(df_, settings, CFG, submission=kwargs.get('submission', False))
     # assert cate_offset == 13790
     CFG.total_cate_size = cate_offset
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
@@ -492,11 +505,12 @@ def update_params(CFG, parameters):
         setattr(CFG, key, value)
     return CFG
 
-def run_validation(df_, settings, parameters, CFG, model_name="", user_dict={}):
+
+def run_validation(df_, settings, CFG, model_name="", user_dict={}):
 
     CFG = parse_model_name(CFG, model_name)
 
-    valid_loader, _, _ = get_dataloader(df_, settings, parameters, CFG, user_dict=user_dict, submission=False)
+    valid_loader, _, _ = get_dataloader(df_, settings, CFG, user_dict=user_dict, submission=False)
 
     model = load_model(settings, CFG, model_name)
 
@@ -506,16 +520,16 @@ def run_validation(df_, settings, parameters, CFG, model_name="", user_dict={}):
     return prediction, groundtruth
 
 
-def run_submission(test_batch, settings, parameters, CFG, model_name, **kwargs):
+def run_submission(test_batch, settings, CFG, model_name, **kwargs):
     if 'user_dict' in kwargs:
         user_dict = kwargs['user_dict']
     else:
         user_dict = get_user_dict(settings, submission_flag=True)
     test_loader, test_df, _ = \
-        get_dataloader(test_batch, settings, parameters, CFG,
+        get_dataloader(test_batch, settings, CFG,
                        user_dict=user_dict, prior_df=kwargs.get('prior_df', None), submission=True)
     df_batch_prior = test_df[['user_id'] + CFG.features]
-    predictions = run_test(test_loader, settings=settings, CFG=CFG, model_name=model_name)
+    predictions = run_test(test_loader, settings, CFG, model_name=model_name)
 
     return predictions, df_batch_prior
 
