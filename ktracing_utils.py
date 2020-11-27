@@ -183,7 +183,9 @@ def get_user_dict(settings, CFG, submission_flag=True):
 
         df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
         print('columns:', df_.columns.to_list())
+
         df_.sort_values(['timestamp'], ascending=True, inplace=True)
+        df_.reset_index(drop=True, inplace=True)
 
         df_ = df_.groupby('user_id').tail(CFG.window_size)
         df_, _, _ = preprocess_data(df_, settings, CFG)
@@ -210,9 +212,9 @@ def update_record(results_u, uid, record):
 def feature_engineering(df_):
 
     #CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
-
-    df_.loc[:, 'lagged_time'] = (df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 300e3).clip(upper=1)
-    df_.loc[:, 'prior_question_elapsed_time'] = (df_.loc[:, 'prior_question_elapsed_time'] / 300e3).clip(upper=1)
+    #
+    # df_.loc[:, 'lagged_time'] = (df_[['user_id', 'timestamp']].groupby('user_id')['timestamp'].diff() / 300e3).clip(upper=1)
+    # df_.loc[:, 'prior_question_elapsed_time'] = (df_.loc[:, 'prior_question_elapsed_time'] / 300e3).clip(upper=1)
     # import feather
     # df_ = feather.read_dataframe('./input/raw/train.feather')
     # prior_question_elapsed_time_mean = df_.prior_question_elapsed_time.dropna().values.mean()
@@ -220,13 +222,13 @@ def feature_engineering(df_):
     # print(prior_question_elapsed_time_mean, lagged_time_mean)
     # del df_
     # gc.collect()
-    prior_question_elapsed_time_mean = 0.091806516
-    lagged_time_mean = 0.22981916761559054
+    # prior_question_elapsed_time_mean = 0.091806516
+    # lagged_time_mean = 0.22981916761559054
     # print(prior_question_elapsed_time_mean, lagged_time_mean)
     # 0.091806516 0.22981916761559054
 
-    df_['prior_question_elapsed_time'] = df_.prior_question_elapsed_time.fillna(prior_question_elapsed_time_mean)
-    df_['lagged_time'] = df_.lagged_time.fillna(lagged_time_mean)
+    # df_['prior_question_elapsed_time'] = df_.prior_question_elapsed_time.fillna(prior_question_elapsed_time_mean)
+    # df_['lagged_time'] = df_.lagged_time.fillna(lagged_time_mean)
 
     df_['user_count'] = df_.groupby(['user_id']).cumcount()
     # lagged_y = df_[['user_id', 'answered_correctly']].groupby('user_id')['answered_correctly'].shift(fill_value=0)
@@ -245,9 +247,10 @@ def  add_new_features(df_, settings, CFG, **kwargs):
     df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
 
-    # df_ = feature_engineering(df_)
+    df_ = feature_engineering(df_)
 
     return df_, mappers_dict, sample_indices
+
 
 def preprocess_data(df_, settings, CFG, **kwargs):
 
@@ -498,7 +501,7 @@ def get_dataloader(df_, settings, CFG, **kwargs):
     train_loader = DataLoader(
         train_db, batch_size=CFG.batch_size, shuffle=False,
         num_workers=0, pin_memory=True)
-    return train_loader, train_df, len(train_samples)
+    return train_loader, train_df, len(train_samples), train_db.user_dict
 
 def update_params(CFG, parameters):
     for key, value in parameters.items():
@@ -510,7 +513,7 @@ def run_validation(df_, settings, CFG, model_name="", user_dict={}):
 
     CFG = parse_model_name(CFG, model_name)
 
-    valid_loader, _, _ = get_dataloader(df_, settings, CFG, user_dict=user_dict, submission=False)
+    valid_loader, _, _, _ = get_dataloader(df_, settings, CFG, user_dict=user_dict, submission=False)
 
     model = load_model(settings, CFG, model_name)
 
@@ -525,13 +528,13 @@ def run_submission(test_batch, settings, CFG, model_name, **kwargs):
         user_dict = kwargs['user_dict']
     else:
         user_dict = get_user_dict(settings, submission_flag=True)
-    test_loader, test_df, _ = \
+    test_loader, test_df, _, user_dict = \
         get_dataloader(test_batch, settings, CFG,
                        user_dict=user_dict, prior_df=kwargs.get('prior_df', None), submission=True)
     df_batch_prior = test_df[['user_id'] + CFG.features]
     predictions = run_test(test_loader, settings, CFG, model_name=model_name)
 
-    return predictions, df_batch_prior
+    return predictions, df_batch_prior, user_dict
 
 
 def run_test(valid_loader, settings=None, CFG=None, model_name=""):

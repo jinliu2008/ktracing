@@ -4,6 +4,7 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 import warnings
 from ktracing_utils import *
 import json
+import sys
 
 warnings.filterwarnings(action='ignore')
 
@@ -38,9 +39,9 @@ def main():
     file_name = settings['TRAIN_DATASET']
     df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
     df_.sort_values(['row_id'], ascending=True, inplace=True)
-    df_.reset_index(inplace=True)
+    df_.reset_index(drop=True, inplace=True)
 
-    train_loader, _, sample_size = get_dataloader(df_, settings, CFG, user_dict={})
+    train_loader, _, sample_size, _ = get_dataloader(df_, settings, CFG, user_dict={})
     model = encoders[CFG.encoder](CFG)
     model.cuda()
     model._dropout = CFG.dropout
@@ -97,7 +98,7 @@ def main():
 
         # user_dict = get_user_dict(settings, CFG, submission_flag=False)
         # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], settings['VALIDATION_DATASET']))
-        # valid_df.sort_values(['row_id'], ascending=True, inplace=True)
+        # valid_df.sort_values(['tiemstamp'], ascending=True, inplace=True)
         # valid_df.reset_index(inplace=True)
         # run_validation(valid_df, settings, CFG, model_name=model_file_name, user_dict=user_dict)
 
@@ -122,7 +123,7 @@ def main():
         predictions_all = []
         for test_batch in sample_batch:
 
-            test_batch.reset_index(inplace=True)
+            test_batch.reset_index(drop=True, inplace=True)
 
             # update state
             if df_batch_prior is not None:
@@ -131,8 +132,10 @@ def main():
                 answers_all += answers.copy()
                 predictions_all += [p[0] for p in predictions.tolist()]
 
-            predictions, df_batch_prior = run_submission(test_batch, settings, CFG, model_file_name,
-                           user_dict=user_dict, prior_df=df_batch_prior)
+            print('len:', len(user_dict))
+
+            predictions, df_batch_prior, user_dict = run_submission(test_batch, settings, CFG, model_file_name,
+                                                                    user_dict=user_dict, prior_df=df_batch_prior)
 
             # get state
             df_batch = test_batch[test_batch.content_type_id == 0]

@@ -120,12 +120,12 @@ class KTDataset(Dataset):
                 self.user_dict[user_id] = curr_array.copy()
 
         target_idx = self.columns.index(TARGET)
-        # curr_array[:, target_idx] = np.roll(curr_array[:, target_idx], 1)
+        curr_array[:, target_idx] = np.roll(curr_array[:, target_idx], 1)
 
         len_ = min(self.seq_len, curr_array.shape[0])
-        curr_array =curr_array[-len_:,:]
+        curr_array = curr_array[-len_:,:]
 
-        curr_array[-1, target_idx] = self.start_token
+        curr_array[0, target_idx] = self.start_token
 
         cate_df = curr_array[:, :len(self.cate_cols)]
 
@@ -175,6 +175,7 @@ class KTDataset(Dataset):
         tmp_response = torch.LongTensor(response_df.astype(float))
         response = torch.LongTensor(self.seq_len, 1).zero_()
         response[-len_:,:] = tmp_response[-len_:,:]
+
         response[response < 0] = 3
 
         mask = torch.ByteTensor(self.seq_len).zero_()

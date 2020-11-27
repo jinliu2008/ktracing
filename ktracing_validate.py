@@ -25,7 +25,7 @@ def main():
     torch.backends.cudnn.deterministic = True
     for epoch in range(3):
         model_file_name = \
-            f'b-128_a-GPT2_e-20_h-20_d-0.2_l-2_hd-10_s-123_len-20_aug-0.0_da-trainsamplev1_epoch-{epoch}.pt'
+            f'b-128_a-TRANSFORMER_e-50_h-100_d-0.2_l-2_hd-10_s-123_len-50_aug-0.0_da-trainsamplev1_epoch-{epoch}.pt'
         CFG.batch_size = 128
         CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
         #

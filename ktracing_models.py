@@ -54,9 +54,9 @@ class TransfomerModel(nn.Module):
             nn.LayerNorm(cfg.hidden_size // 2-1),
         )
 
-        self.response_emb = nn.Embedding(4, 2, padding_idx=0)
+        self.response_emb = nn.Embedding(4, 3, padding_idx=0)
         self.response_proj = nn.Sequential(
-            nn.Linear(2, 2),
+            nn.Linear(3, 2),
             nn.LayerNorm(2),
         )
         self.position_embeddings = nn.Embedding(cfg.total_cate_size, cfg.hidden_size)
