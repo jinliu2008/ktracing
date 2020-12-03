@@ -121,7 +121,7 @@ def main():
 
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
         #
-        df_sample[TARGET] = 0.5
+        df_sample[TARGET] = -df_sample['content_type_id']
         sample_batch = []
 
         # batch 1
