@@ -123,7 +123,6 @@ def generate_files(settings=None, parameters=None):
             pickle.dump(mappers_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
     with open(mappers_dict_path, 'rb') as handle:
         mappers_dict = pickle.load(handle)
-
     results_c_path = os.path.join(settings["CLEAN_DATA_DIR"], 'results_c.pkl')
     if not os.path.isfile(results_c_path):
         df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], 'train_v0.feather'))
@@ -135,7 +134,6 @@ def generate_files(settings=None, parameters=None):
         results_c = pickle.load(handle)
 
     return questions_df, mappers_dict, results_c
-
 
 
 def build_conn(df_users_content, chunk_size=20000):
@@ -205,7 +203,8 @@ def  add_new_features(df_, settings, parameters):
 
 def add_features(df_, settings, parameters, mode='train'):
     questions_df, mappers_dict, results_c = generate_files(settings=settings, parameters=parameters)
-    df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    # df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    # df_.sort_values(['timestamp'], ascending=True, inplace=True)
     df_.reset_index(inplace=True)
 
     if mode == 'validation':

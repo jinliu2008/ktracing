@@ -1,3 +1,23 @@
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np  # linear algebra
+import pandas as pd  # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All"
+# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
+
+
 # import warnings
 # warnings.filterwarnings('ignore')
 
@@ -7,35 +27,39 @@ from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd
 import gc
+
 TARGET = 'answered_correctly'
+
 
 # funcs for user stats with loop
 def add_user_feats(df, answered_correctly_sum_u_dict, count_u_dict):
     acsu = np.zeros(len(df), dtype=np.int32)
     cu = np.zeros(len(df), dtype=np.int32)
-    for cnt,row in enumerate(tqdm(df[['user_id','answered_correctly']].values)):
+    for cnt, row in enumerate(tqdm(df[['user_id', 'answered_correctly']].values)):
         acsu[cnt] = answered_correctly_sum_u_dict[row[0]]
         cu[cnt] = count_u_dict[row[0]]
         answered_correctly_sum_u_dict[row[0]] += row[1]
         count_u_dict[row[0]] += 1
-    user_feats_df = pd.DataFrame({'answered_correctly_sum_u':acsu, 'count_u':cu})
+    user_feats_df = pd.DataFrame({'answered_correctly_sum_u': acsu, 'count_u': cu})
     user_feats_df['answered_correctly_avg_u'] = user_feats_df['answered_correctly_sum_u'] / user_feats_df['count_u']
     df = pd.concat([df, user_feats_df], axis=1)
     return df
+
 
 def add_user_feats_without_update(df, answered_correctly_sum_u_dict, count_u_dict):
     acsu = np.zeros(len(df), dtype=np.int32)
     cu = np.zeros(len(df), dtype=np.int32)
-    for cnt,row in enumerate(df[['user_id']].values):
+    for cnt, row in enumerate(df[['user_id']].values):
         acsu[cnt] = answered_correctly_sum_u_dict[row[0]]
         cu[cnt] = count_u_dict[row[0]]
-    user_feats_df = pd.DataFrame({'answered_correctly_sum_u':acsu, 'count_u':cu})
+    user_feats_df = pd.DataFrame({'answered_correctly_sum_u': acsu, 'count_u': cu})
     user_feats_df['answered_correctly_avg_u'] = user_feats_df['answered_correctly_sum_u'] / user_feats_df['count_u']
     df = pd.concat([df, user_feats_df], axis=1)
     return df
 
+
 def update_user_feats(df, answered_correctly_sum_u_dict, count_u_dict):
-    for row in df[['user_id','answered_correctly','content_type_id']].values:
+    for row in df[['user_id', 'answered_correctly', 'content_type_id']].values:
         if row[2] == 0:
             answered_correctly_sum_u_dict[row[0]] += row[1]
             count_u_dict[row[0]] += 1
@@ -87,7 +111,7 @@ class KTDataset(Dataset):
                         cut_ratio = self.aug
                     len_ = max(int(len_ * cut_ratio), 30)
 
-        curr_row = np.array(self.df[index,:]).reshape(1,-1)
+        curr_row = np.array(self.df[index, :]).reshape(1, -1)
         target_idx = self.columns.index(TARGET)
         if user_id not in self.user_dict:
             curr_array = curr_row.copy()
@@ -98,14 +122,14 @@ class KTDataset(Dataset):
         # update dict
         if not self.submission:
             if curr_array.shape[0] > self.seq_len:
-                self.user_dict[user_id] = curr_array[-self.seq_len:,:]
+                self.user_dict[user_id] = curr_array[-self.seq_len:, :]
             else:
                 self.user_dict[user_id] = curr_array.copy()
 
         curr_array[:, target_idx] = np.roll(curr_array[:, target_idx], 1)
 
         len_ = min(self.seq_len, curr_array.shape[0])
-        curr_array =curr_array[-len_:,:]
+        curr_array = curr_array[-len_:, :]
         curr_array[0, target_idx] = self.start_token
 
         cate_df = curr_array[:, :len(self.cate_cols)]
@@ -116,11 +140,11 @@ class KTDataset(Dataset):
         tmp_cate_x = torch.LongTensor(cate_df.astype(float))
         cate_x = torch.LongTensor(self.seq_len, len(self.cate_cols)).zero_()
 
-        cate_x[-len_:,:] = tmp_cate_x[-len_:,:]
+        cate_x[-len_:, :] = tmp_cate_x[-len_:, :]
 
         tmp_cont_x = torch.FloatTensor(cont_df.astype(float))
-        cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)+1).zero_()
-        cont_x[-len_:,:] = tmp_cont_x[-len_:,:]
+        cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols) + 1).zero_()
+        cont_x[-len_:, :] = tmp_cont_x[-len_:, :]
 
         mask = torch.ByteTensor(self.seq_len).zero_()
         mask[-len_:] = 1

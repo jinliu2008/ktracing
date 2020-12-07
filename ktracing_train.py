@@ -7,7 +7,7 @@ import json
 
 warnings.filterwarnings(action='ignore')
 
-submission_flag = 0
+submission_flag = 1
 
 def main():
 
@@ -30,28 +30,6 @@ def main():
     torch.backends.cudnn.deterministic = True
     CFG.features = CFG.cate_cols + CFG.cont_cols + [TARGET]
 
-    if submission_flag == 1:
-        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
-    else:
-        results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict_v0.pkl')
-    start = time.time()
-    if not os.path.isfile(results_u_path):
-        if submission_flag == 1:
-            input_file_name = "train.feather"
-        else:
-            input_file_name = "train_v0.feather"
-        print(f'input: {input_file_name}')
-        df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
-        df_ = df_.groupby('user_id').tail(CFG.window_size)
-        df_, _, _ = preprocess_data(df_, parameters=parameters, settings=settings)
-
-        df_ = df_[['user_id'] + CFG.features]
-        user_dict = {uid: u.values[:, 1:] for uid, u in df_.groupby('user_id')}
-        with open(results_u_path, 'wb') as handle:
-            pickle.dump(user_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    else:
-        with open(results_u_path, 'rb') as handle:
-            user_dict = pickle.load(handle)
 
     print(f'process time: {time.time() - start} seconds')
     print(f'CFG: {CFG.__dict__}')
@@ -112,12 +90,35 @@ def main():
             settings['MODEL_DIR'], model_file_name,
         )
 
-        file_name = settings['VALIDATION_DATASET']
+        if submission_flag == 1:
+            results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict.pkl')
+        else:
+            results_u_path = os.path.join(settings["CLEAN_DATA_DIR"], 'user_dict_v0.pkl')
+        start = time.time()
+        if not os.path.isfile(results_u_path):
+            if submission_flag == 1:
+                input_file_name = "train.feather"
+            else:
+                input_file_name = "train_v0.feather"
+            print(f'input: {input_file_name}')
+            df_ = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], input_file_name))
+            df_ = df_.groupby('user_id').tail(CFG.window_size)
+            df_, _, _ = preprocess_data(df_, parameters=parameters, settings=settings)
 
-        valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
+            df_ = df_[['user_id'] + CFG.features]
+            user_dict = {uid: u.values[:, 1:] for uid, u in df_.groupby('user_id')}
+            with open(results_u_path, 'wb') as handle:
+                pickle.dump(user_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        else:
+            with open(results_u_path, 'rb') as handle:
+                user_dict = pickle.load(handle)
 
-        run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
-                       model_name=model_file_name, user_dict=user_dict)
+        # file_name = settings['VALIDATION_DATASET']
+        # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], file_name))
+        # run_validation(valid_df, settings=settings, parameters=parameters, CFG=CFG,
+        #                model_name=model_file_name, user_dict=user_dict)
+
+    for epoch in range(CFG.start_epoch, CFG.num_train_epochs):
 
         df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
         #
