@@ -104,44 +104,48 @@ def main():
 
         user_dict = get_user_dict(settings, CFG, submission_flag=True)
         print(f'epoch:{epoch} submission user len:', len(user_dict))
-        df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
-        #
-        df_sample[TARGET] = df_sample['content_type_id']
-        sample_batch = []
 
-        # batch 1
-        sample_batch.append(df_sample.iloc[:18])
-        # batch 2
-        sample_batch.append(df_sample.iloc[18:45])
-        # batch 3
-        sample_batch.append(df_sample.iloc[45:71])
-        # batch 4
-        sample_batch.append(df_sample.iloc[71:])
+        for epoch in range(CFG.start_epoch, CFG.num_train_epochs):
 
-        df_batch_prior = None
-        answers_all = []
-        predictions_all = []
-        for test_batch in sample_batch:
 
-            test_batch.reset_index(drop=True, inplace=True)
+            df_sample = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'example_test.csv'))
+            #
+            df_sample[TARGET] = df_sample['content_type_id']
+            sample_batch = []
 
-            # update state
-            if df_batch_prior is not None:
-                answers = eval(test_batch['prior_group_answers_correct'].iloc[0])
-                df_batch_prior['answered_correctly'] = answers
-                answers_all += answers.copy()
-                predictions_all += [p[0] for p in predictions.tolist()]
+            # batch 1
+            sample_batch.append(df_sample.iloc[:18])
+            # batch 2
+            sample_batch.append(df_sample.iloc[18:45])
+            # batch 3
+            sample_batch.append(df_sample.iloc[45:71])
+            # batch 4
+            sample_batch.append(df_sample.iloc[71:])
 
-            print('len:', len(user_dict))
+            df_batch_prior = None
+            answers_all = []
+            predictions_all = []
+            for test_batch in sample_batch:
 
-            predictions, df_batch_prior, user_dict = run_submission(test_batch, settings, CFG, model_file_name,
-                                                                    user_dict=user_dict, prior_df=df_batch_prior)
+                test_batch.reset_index(drop=True, inplace=True)
 
-            # get state
-            df_batch = test_batch[test_batch.content_type_id == 0]
-            df_batch['answered_correctly'] = predictions
+                # update state
+                if df_batch_prior is not None:
+                    answers = eval(test_batch['prior_group_answers_correct'].iloc[0])
+                    df_batch_prior['answered_correctly'] = answers
+                    answers_all += answers.copy()
+                    predictions_all += [p[0] for p in predictions.tolist()]
 
-        print('sample auc:', metrics.roc_auc_score(answers_all, predictions_all))
+                print('len:', len(user_dict))
+
+                predictions, df_batch_prior, user_dict = run_submission(test_batch, settings, CFG, model_file_name,
+                                                                        user_dict=user_dict, prior_df=df_batch_prior)
+
+                # get state
+                df_batch = test_batch[test_batch.content_type_id == 0]
+                df_batch['answered_correctly'] = predictions
+
+            print('sample auc:', metrics.roc_auc_score(answers_all, predictions_all))
 
 if __name__ == '__main__':
     main()

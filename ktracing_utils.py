@@ -257,8 +257,8 @@ def preprocess_data(df_, settings, CFG, **kwargs):
     CFG.cate_cols = CFG.cate_cols
     CFG.cont_cols = CFG.cont_cols
 
-    # df_.sort_values(['timestamp'], ascending=True, inplace=True)
-    # df_.reset_index(inplace=True)
+    df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    df_.reset_index(inplace=True)
 
     df_, mappers_dict, sample_indices = add_new_features(df_, settings, CFG, **kwargs)
     df_, cate_offset = transform_df(df_, CFG, mappers_dict)
