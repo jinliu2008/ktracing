@@ -133,7 +133,7 @@ class KTDataset(Dataset):
         if 'prior_question_elapsed_time' in self.columns:
             elpase_time_idx = self.columns.index('prior_question_elapsed_time')
             curr_array[:, elpase_time_idx] = np.clip(curr_array[:, elpase_time_idx]/300e3, 0, 1)
-            # curr_array[0, elpase_time_idx] = 0.091806516
+            curr_array[0, elpase_time_idx] = 0.091806516
 
         boolean_idx = []
 
