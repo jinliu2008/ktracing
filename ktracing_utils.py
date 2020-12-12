@@ -100,6 +100,12 @@ def get_questions_df(settings):
     questions_df.set_index('content_id', inplace=True)
     return questions_df
 
+def get_lectures_df(settings):
+    lectures_df = pd.read_csv(os.path.join(settings['RAW_DATA_DIR'], 'lectures.csv'), usecols=[0, 1, 3])
+    lectures_df.rename(columns={'lecture_id': 'content_id'}, inplace=True)
+    lectures_df.set_index('content_id', inplace=True)
+    return lectures_df
+
 
 def generate_files(settings, CFG, submission=False):
     if submission:
@@ -109,15 +115,20 @@ def generate_files(settings, CFG, submission=False):
         input_file_name = 'train_v0.feather'
         file_path = settings["CLEAN_DATA_DIR"]
 
-    questions_df = get_questions_df(settings)
     cate_cols = CFG.cate_cols
 
     mappers_dict_path = os.path.join(file_path, 'mappers_dict.pkl')
+    questions_df = get_questions_df(settings)
+    lectures_df = get_lectures_df(settings)
     if not os.path.isfile(mappers_dict_path):
         df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], 'train.feather'))
-        questions_df = get_questions_df(settings)
+
+        lectures_df = get_lectures_df(settings)
         df_.set_index('content_id', inplace=True)
         df_ = df_.join(questions_df, how='left')
+        df_['part'].fillna(value=-1, inplace=True)
+        df_ = df_.join(lectures_df, how='left')
+        df_['type_of'].fillna(value='None', inplace=True)
         df_.reset_index(inplace=True)
         mappers_dict = {}
         cate_offset = 1
@@ -145,7 +156,7 @@ def generate_files(settings, CFG, submission=False):
         with open(results_c_path, 'rb') as handle:
             results_c = pickle.load(handle)
 
-    return questions_df, mappers_dict, results_c
+    return questions_df, lectures_df, mappers_dict, results_c
 
 
 
@@ -237,16 +248,21 @@ def feature_engineering(df_):
 
 
 def  add_new_features(df_, settings, CFG, **kwargs):
-    questions_df, mappers_dict, results_c = generate_files(settings, CFG, **kwargs)
+    questions_df, lectures_df, mappers_dict, results_c = generate_files(settings, CFG, **kwargs)
 
     sample_indices = get_samples(df_)
 
     # df_ = df_.set_index('content_id')
     df_ = pd.concat([df_.reset_index(drop=True), questions_df.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
-    df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
+    df_ = pd.concat([df_.reset_index(drop=True), lectures_df.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
 
+    df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
+                  axis=1)
+    df_['type_of'].fillna(value='None', inplace=True)
+    df_['part'].fillna(value=-1, inplace=True)
+    df_['answered_correctly_content'].fillna(value=0.5, inplace=True)
     df_ = feature_engineering(df_)
 
     return df_, mappers_dict, sample_indices
@@ -256,8 +272,11 @@ def preprocess_data(df_, settings, CFG, **kwargs):
 
     CFG.cate_cols = CFG.cate_cols
     CFG.cont_cols = CFG.cont_cols
-
-    df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    submission_flag = kwargs.get('submission', False)
+    if not submission_flag:
+        df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+    else:
+        df_.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
     df_.reset_index(inplace=True)
 
     df_, mappers_dict, sample_indices = add_new_features(df_, settings, CFG, **kwargs)

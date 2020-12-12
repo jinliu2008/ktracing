@@ -91,15 +91,10 @@ class KTDataset(Dataset):
         # 275030867
         user_id, user_idx, index = self.sample_indices[idx]
 
-        if self.aug > 0:
-            if len_ > 50:
-                if np.random.binomial(1, self.aug_p) == 1:
-                    cut_ratio = np.random.rand()
-                    if cut_ratio > self.aug:
-                        cut_ratio = self.aug
-                    len_ = max(int(len_ * cut_ratio), 30)
 
-        curr_row = np.array(self.df[index,:]).reshape(1,-1)
+
+        curr_row = np.array(self.df[index, :]).reshape(1, -1)
+        target_df = curr_row[-1, -1]
 
         if user_id not in self.user_dict:
             curr_array = curr_row.copy()
@@ -123,6 +118,14 @@ class KTDataset(Dataset):
         curr_array[:, target_idx] = np.roll(curr_array[:, target_idx], 1)
 
         len_ = min(self.seq_len, curr_array.shape[0])
+        if self.aug > 0:
+            if len_ > 50:
+                if np.random.binomial(1, self.aug_p) == 1:
+                    cut_ratio = np.random.rand()
+                    if cut_ratio > self.aug:
+                        cut_ratio = self.aug
+                    len_ = max(int(len_ * cut_ratio), 30)
+
         curr_array = curr_array[-len_:,:]
 
         curr_array[0, target_idx] = self.start_token
@@ -133,7 +136,7 @@ class KTDataset(Dataset):
         if 'prior_question_elapsed_time' in self.columns:
             elpase_time_idx = self.columns.index('prior_question_elapsed_time')
             curr_array[:, elpase_time_idx] = np.clip(curr_array[:, elpase_time_idx]/300e3, 0, 1)
-            curr_array[0, elpase_time_idx] = 0.091806516
+            curr_array[0, elpase_time_idx] = 0
 
         boolean_idx = []
 
@@ -158,9 +161,9 @@ class KTDataset(Dataset):
             if c in boolean_idx:
                 continue
             cont_df[:, c-len(self.cate_cols)] = np.log1p(cont_df[:, c-len(self.cate_cols)].astype(float))
+            # cont_df[-1,:] = 0
 
         response_df = curr_array[:, -1:]
-        target_df = curr_row[-1, -1]
 
         # prepare cate
         tmp_cate_x = torch.LongTensor(cate_df.astype(float))
@@ -171,12 +174,14 @@ class KTDataset(Dataset):
         tmp_cont_x = torch.FloatTensor(cont_df.astype(float))
         cont_x = torch.FloatTensor(self.seq_len, len(self.cont_cols)).zero_()
         cont_x[-len_:,:] = tmp_cont_x[-len_:,:]
-
+        # if any(response_df < 0):
+        #     print(response_df)
+        response_df[response_df < 0] = 3
+        # response_df = response_df + self.cfg.total_cate_size
         tmp_response = torch.LongTensor(response_df.astype(float))
         response = torch.LongTensor(self.seq_len, 1).zero_()
         response[-len_:,:] = tmp_response[-len_:,:]
 
-        response[response < 0] = 3
 
         mask = torch.ByteTensor(self.seq_len).zero_()
         mask[-len_:] = 1
