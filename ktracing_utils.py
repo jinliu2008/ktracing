@@ -296,7 +296,7 @@ def transform_df(df_, CFG, mappers_dict):
         cate_offset += len(cate2idx)
     for col in cont_cols:
         df_[col].fillna(0, inplace=True)
-    return df_[CFG.features], cate_offset
+    return df_[['user_id']+CFG.features], cate_offset
 
 
 def save_to_feather(file_name="validation-v0-00000000000", output_file_name="validation_v0", max_=30, settings=None):
@@ -331,12 +331,8 @@ def get_samples(df_):
         for num, curr_index in enumerate(start_indices):
             # if curr_index in row_id_list:
 
-            if np.random.binomial(1, 0.5) == 1:
-                cut_ratio = np.random.rand()
-                if cut_ratio > 0.5:
-
-                    sample_indices.append((user_idx, curr_cnt, curr_index))
-                    curr_cnt += 1
+            sample_indices.append((user_idx, curr_cnt, curr_index))
+            curr_cnt += 1
 
             # else:
             #     assert df_.loc[curr_index, TARGET] == -1
@@ -516,7 +512,7 @@ def get_lr():
 def get_dataloader(df_, settings, CFG, **kwargs):
     train_df, train_samples, cate_offset = \
         preprocess_data(df_, settings, CFG, submission=kwargs.get('submission', False))
-    print('finish preprocessing')
+    # print('finish preprocessing')
     # assert cate_offset == 13790
 
 

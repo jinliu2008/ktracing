@@ -96,11 +96,11 @@ def main():
             settings['MODEL_DIR'], model_file_name,
         )
 
-        user_dict = get_user_dict(settings, CFG, submission_flag=False)
-        valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], settings['VALIDATION_DATASET']))
-        valid_df.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
-        valid_df.reset_index(inplace=True)
-        run_validation(valid_df, settings, CFG, model_name=model_file_name, user_dict=user_dict)
+        # user_dict = get_user_dict(settings, CFG, submission_flag=False)
+        # valid_df = feather.read_dataframe(os.path.join(settings['RAW_DATA_DIR'], settings['VALIDATION_DATASET']))
+        # valid_df.sort_values(['user_id', 'timestamp'], ascending=True, inplace=True)
+        # valid_df.reset_index(inplace=True)
+        # run_validation(valid_df, settings, CFG, model_name=model_file_name, user_dict=user_dict)
 
         user_dict = get_user_dict(settings, CFG, submission_flag=True)
         print(f'epoch:{epoch} submission user len:', len(user_dict))
