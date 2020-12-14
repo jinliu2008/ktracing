@@ -6,6 +6,7 @@ import gcsfs
 import feather
 from sklearn import metrics
 import sqlite3
+import gc
 
 from tqdm import tqdm as tqdm_notebook
 
@@ -510,6 +511,8 @@ def get_lr():
 def get_dataloader(df_, settings, CFG, **kwargs):
     train_df, train_samples, cate_offset = \
         preprocess_data(df_, settings, CFG, submission=kwargs.get('submission', False))
+    del df_
+    gc.collect()
     # assert cate_offset == 13790
     CFG.total_cate_size = cate_offset
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
@@ -520,6 +523,7 @@ def get_dataloader(df_, settings, CFG, **kwargs):
     train_loader = DataLoader(
         train_db, batch_size=CFG.batch_size, shuffle=False,
         num_workers=0, pin_memory=True)
+
     return train_loader, train_df, len(train_samples), train_db.user_dict
 
 def update_params(CFG, parameters):
