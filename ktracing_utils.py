@@ -258,13 +258,12 @@ def  add_new_features(df_, settings, CFG, **kwargs):
                   axis=1)
     df_ = pd.concat([df_.reset_index(drop=True), lectures_df.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
-
     df_ = pd.concat([df_.reset_index(drop=True), results_c.reindex(df_['content_id'].values).reset_index(drop=True)],
                   axis=1)
     df_['type_of'].fillna(value='None', inplace=True)
     df_['part'].fillna(value=-1, inplace=True)
     df_['answered_correctly_content'].fillna(value=0.5, inplace=True)
-    df_ = feature_engineering(df_)
+    # df_ = feature_engineering(df_)
 
     return df_, mappers_dict, sample_indices
 
@@ -297,7 +296,7 @@ def transform_df(df_, CFG, mappers_dict):
         cate_offset += len(cate2idx)
     for col in cont_cols:
         df_[col].fillna(0, inplace=True)
-    return df_, cate_offset
+    return df_[CFG.features], cate_offset
 
 
 def save_to_feather(file_name="validation-v0-00000000000", output_file_name="validation_v0", max_=30, settings=None):
@@ -511,8 +510,7 @@ def get_lr():
 def get_dataloader(df_, settings, CFG, **kwargs):
     train_df, train_samples, cate_offset = \
         preprocess_data(df_, settings, CFG, submission=kwargs.get('submission', False))
-    del df_
-    gc.collect()
+    print('finish preprocessing')
     # assert cate_offset == 13790
     CFG.total_cate_size = cate_offset
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
