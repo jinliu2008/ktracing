@@ -330,8 +330,14 @@ def get_samples(df_):
         curr_cnt = 0
         for num, curr_index in enumerate(start_indices):
             # if curr_index in row_id_list:
-            sample_indices.append((user_idx, curr_cnt, curr_index))
-            curr_cnt += 1
+
+            if np.random.binomial(1, 0.5) == 1:
+                cut_ratio = np.random.rand()
+                if cut_ratio > 0.5:
+
+                    sample_indices.append((user_idx, curr_cnt, curr_index))
+                    curr_cnt += 1
+
             # else:
             #     assert df_.loc[curr_index, TARGET] == -1
 
