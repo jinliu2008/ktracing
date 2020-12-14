@@ -518,18 +518,25 @@ def get_dataloader(df_, settings, CFG, **kwargs):
         preprocess_data(df_, settings, CFG, submission=kwargs.get('submission', False))
     print('finish preprocessing')
     # assert cate_offset == 13790
+
+
     CFG.total_cate_size = cate_offset
     train_db = KTDataset(CFG, train_df[CFG.features].values, train_samples,
                          CFG.features, user_dict=kwargs.get('user_dict', {}),
                          aug=kwargs.get('aug', CFG.aug),
                          prior_df=kwargs.get('prior_df', None), submission=kwargs.get('submission', False))
 
+    if not kwargs.get('submission', False):
+        del train_df
+        gc.collect()
+
     train_loader = DataLoader(
         train_db, batch_size=CFG.batch_size, shuffle=False,
         num_workers=0, pin_memory=True)
-
-    return train_loader, train_df, len(train_samples), train_db.user_dict
-
+    if kwargs.get('submission', False):
+        return train_loader, train_df, len(train_samples), train_db.user_dict
+    else:
+        return train_loader, None, len(train_samples), train_db.user_dict
 def update_params(CFG, parameters):
     for key, value in parameters.items():
         setattr(CFG, key, value)

@@ -51,6 +51,8 @@ class KTDataset(Dataset):
                  , prior_df=None, submission=False):
         self.cfg = cfg
         self.df = df
+        del df
+        gc.collect()
 
         self.sample_indices = sample_indices
         self.seq_len = self.cfg.seq_len
