@@ -8,8 +8,7 @@ from sklearn import metrics
 import sqlite3
 import gc
 
-from tqdm import tqdm as tqdm_notebook
-
+from tqdm import tqdm
 from collections import deque
 import torch
 
@@ -70,6 +69,54 @@ class CFG:
     window_size = 50
 
 
+def SAKT_train(model, train_iterator, optim):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    criterion = nn.BCEWithLogitsLoss()
+    criterion.to(device)
+
+    model.to(device)
+    model.train()
+
+    train_loss = []
+    num_corrects = 0
+    num_total = 0
+    labels = []
+    outs = []
+
+    tbar = tqdm(train_iterator)
+    for item in tbar:
+        x = item[0].to(device).long()
+        target_id = item[1].to(device).long()
+        label = item[2].to(device).float()
+
+        optim.zero_grad()
+        output, atten_weight = model(x, target_id)
+        loss = criterion(output, label)
+        loss.backward()
+        optim.step()
+        train_loss.append(loss.item())
+
+        output = output[:, -1]
+        label = label[:, -1]
+        pred = (torch.sigmoid(output) >= 0.5).long()
+
+        num_corrects += (pred == label).sum().item()
+        num_total += len(label)
+
+        labels.extend(label.view(-1).data.cpu().numpy())
+        outs.extend(output.view(-1).data.cpu().numpy())
+
+        tbar.set_description('loss - {:.4f}'.format(loss))
+
+    acc = num_corrects / num_total
+    auc = metrics.roc_auc_score(labels, outs)
+    loss = np.mean(train_loss)
+
+    return acc, auc, loss
+
+
+
 def get_logger(settings, time_str):
     FORMAT = '[%(levelname)s]%(asctime)s:%(name)s:%(message)s'
     logging.basicConfig(filename=os.path.join(settings['LOGS_DIR'], f'log_{time_str}.txt'),
@@ -106,6 +153,27 @@ def get_lectures_df(settings):
     lectures_df.rename(columns={'lecture_id': 'content_id'}, inplace=True)
     lectures_df.set_index('content_id', inplace=True)
     return lectures_df
+
+
+def generate_files_updated(settings, submission=False):
+    if submission:
+        file_path = settings["SUBMISSION_DIR"]
+    else:
+        file_path = settings["CLEAN_DATA_DIR"]
+
+    group_path = os.path.join(file_path, 'group.pkl')
+    if not os.path.isfile(group_path):
+        df_ = feather.read_dataframe(os.path.join(settings["RAW_DATA_DIR"], 'train.feather'))
+        group = df_[['user_id', 'content_id', 'answered_correctly']].groupby('user_id').apply(lambda r: (
+            r['content_id'].values,
+            r['answered_correctly'].values))
+        del df_
+        gc.collect()
+
+    else:
+        with open(group_path, 'rb') as handle:
+            group = pickle.load(handle)
+    return group
 
 
 def generate_files(settings, CFG, submission=False):
@@ -178,6 +246,7 @@ def build_conn(df_users_content, chunk_size=20000):
     del df_users_content
     gc.collect()
     return conn
+
 
 
 def get_user_dict(settings, CFG, submission_flag=True):
@@ -296,7 +365,7 @@ def transform_df(df_, CFG, mappers_dict):
         cate_offset += len(cate2idx)
     for col in cont_cols:
         df_[col].fillna(0, inplace=True)
-    return df_[['user_id']+CFG.features], cate_offset
+    return df_, cate_offset
 
 
 def save_to_feather(file_name="validation-v0-00000000000", output_file_name="validation_v0", max_=30, settings=None):

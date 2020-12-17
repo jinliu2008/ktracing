@@ -7,3 +7,4 @@ transformers
 PyYAML==5.3.1
 pyarrow==1.0.1
 feather-format==0.4.1
+psutil

@@ -18,4 +18,4 @@ hidden_size: 20
 nlayers: 2
 nheads: 10
 seq_len: 20
-encoder: 'BERT'
+encoder: 'SAKT'
